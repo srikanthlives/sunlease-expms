@@ -7,7 +7,7 @@ services:
       - "8000:8000"
     environment:
       # Application
-      EXPMS_SECRET_KEY: ${EXPMS_SECRET_KEY:?set EXPMS_SECRET_KEY in .env, e.g. via: openssl rand -hex 32}
+      EXPMS_SECRET_KEY: "${EXPMS_SECRET_KEY:?set EXPMS_SECRET_KEY in .env - generate with: openssl rand -hex 32}"
       EXPMS_DATABASE_URL: sqlite:////app/data/expms.db
       EXPMS_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
