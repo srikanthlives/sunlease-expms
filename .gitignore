@@ -70,7 +70,9 @@ expms.db
 
 # Google Drive / Credentials (NEVER commit these!)
 gdrive-credentials.json
+gdrive-credentials.json.json
 *-credentials.json
+*-credentials.json.json
 *.json.key
 
 # Docker
