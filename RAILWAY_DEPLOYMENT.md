@@ -86,7 +86,7 @@ git push origin main
 
 **Essential Settings:**
 ```
-EXPMS_SECRET_KEY=<generate-a-strong-random-key>
+EXPMS_SECRET_KEY=k7Xv29BpLzQ3mN6sRtYw1fGhJdK4cV8bNx2mQ5pZ9lA=
 EXPMS_DATABASE_URL=sqlite:////app/data/expms.db
 EXPMS_CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
 ```

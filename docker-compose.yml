@@ -7,21 +7,21 @@ services:
       - "8000:8000"
     environment:
       # Application
-      EXPMS_SECRET_KEY: dev-secret-change-in-production
+      EXPMS_SECRET_KEY: k7Xv29BpLzQ3mN6sRtYw1fGhJdK4cV8bNx2mQ5pZ9lA=
       EXPMS_DATABASE_URL: sqlite:////app/data/expms.db
       EXPMS_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
       
       # Storage: Change to 'gdrive' for Google Drive
-      EXPMS_STORAGE_TYPE: local
+      # EXPMS_STORAGE_TYPE: local
       
       # Local storage (used when STORAGE_TYPE=local)
-      EXPMS_UPLOAD_DIR: /app/data/uploads
-      EXPMS_MAX_UPLOAD_SIZE_MB: 15
+      # EXPMS_UPLOAD_DIR: /app/data/uploads
+      # EXPMS_MAX_UPLOAD_SIZE_MB: 15
       
       # Google Drive storage (uncomment and configure if using Google Drive)
-      # EXPMS_STORAGE_TYPE: gdrive
-      # EXPMS_GDRIVE_FOLDER_ID: your-folder-id-here
-      # EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
+      EXPMS_STORAGE_TYPE: gdrive
+      EXPMS_GDRIVE_FOLDER_ID: 1vezMDBKNXMN76knihgGzRtMv9H9rw1z6
+      EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
     
     volumes:
       # For local storage development
