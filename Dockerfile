@@ -44,6 +44,11 @@ RUN mkdir -p /app/data
 ENV EXPMS_DATABASE_URL=sqlite:////app/data/expms.db
 ENV EXPMS_UPLOAD_DIR=/app/data/uploads
 
+# Tells startup.sh it's running inside this image (deps/frontend already
+# built) rather than bare metal - more reliable than checking /.dockerenv,
+# which some container platforms (e.g. Railway) don't create.
+ENV EXPMS_RUNNING_IN_DOCKER=1
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1

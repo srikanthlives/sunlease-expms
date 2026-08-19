@@ -15,7 +15,7 @@ echo "======================================="
 echo "Starting Expense & Payment Management System"
 echo "======================================="
 
-if [ -f /.dockerenv ]; then
+if [ -n "$EXPMS_RUNNING_IN_DOCKER" ] || [ -f /.dockerenv ]; then
     cd /app
 
     CREDS_PATH="${EXPMS_GDRIVE_CREDENTIALS_PATH:-/app/gdrive-credentials.json}"
