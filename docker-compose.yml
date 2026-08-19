@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Application
+      EXPMS_SECRET_KEY: dev-secret-change-in-production
+      EXPMS_DATABASE_URL: sqlite:////app/data/expms.db
+      EXPMS_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
+      
+      # Storage: Change to 'gdrive' for Google Drive
+      EXPMS_STORAGE_TYPE: local
+      
+      # Local storage (used when STORAGE_TYPE=local)
+      EXPMS_UPLOAD_DIR: /app/data/uploads
+      EXPMS_MAX_UPLOAD_SIZE_MB: 15
+      
+      # Google Drive storage (uncomment and configure if using Google Drive)
+      # EXPMS_STORAGE_TYPE: gdrive
+      # EXPMS_GDRIVE_FOLDER_ID: your-folder-id-here
+      # EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
+    
+    volumes:
+      # For local storage development
+      - ./data:/app/data
+      
+      # Uncomment to mount Google Drive credentials
+      # - ./gdrive-credentials.json:/app/gdrive-credentials.json:ro
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+  # Optional: PostgreSQL for production
+  # postgres:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_DB: expms
+  #     POSTGRES_USER: expms
+  #     POSTGRES_PASSWORD: change-this-password
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+
+# volumes:
+#   postgres_data:
