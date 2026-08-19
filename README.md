@@ -40,18 +40,27 @@ running API and pass, including the over-allocation rejection case.
 
 ## Running it
 
+The fastest way to run everything (backend + frontend build) is:
+
+```bash
+./startup.sh
+```
+
+It creates the backend venv, installs dependencies, builds the frontend,
+and starts uvicorn on port 8000. For Docker or Railway, see
+[DEPLOYMENT.md](./DEPLOYMENT.md).
+
+To run backend and frontend separately in dev mode instead:
+
 ### 1. Backend
 
 ```bash
 cd backend
 python3 -m venv .venv && source .venv/bin/activate   # optional but recommended
-pip install fastapi "uvicorn[standard]" sqlalchemy alembic "pydantic>=2" \
-    pydantic-settings "python-jose[cryptography]" "passlib[bcrypt]" \
-    python-multipart "bcrypt==4.0.1" email-validator
+pip install -r requirements.txt
 
 python -m app.seed          # creates expms.db, roles, and sample logins
 uvicorn app.main:app --reload --port 8000
-python3 -m uvicorn app.main:app --reload --port 8000 
 ```
 
 The API is now at `http://localhost:8000`, with interactive docs at

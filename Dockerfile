@@ -32,6 +32,10 @@ COPY backend/app ./app
 # Copy built frontend dist from builder stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend_dist
 
+# Shared entrypoint (also used for bare-metal dev - see README.md)
+COPY startup.sh ./startup.sh
+RUN chmod +x ./startup.sh
+
 # Create data directory for uploads/database (kept outside the app code dir
 # so it survives image rebuilds when mounted as a volume)
 RUN mkdir -p /app/data
@@ -45,4 +49,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./startup.sh"]
