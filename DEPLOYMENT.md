@@ -51,7 +51,7 @@ docker build -t expms:latest .
 docker run -p 8000:8000 \
   -e EXPMS_SECRET_KEY=$(openssl rand -hex 32) \
   -e EXPMS_STORAGE_TYPE=local \
-  -v $(pwd)/data:/app/data \
+  -v $(pwd)/data:/data \
   expms:latest
 ```
 
@@ -104,7 +104,7 @@ storage pricing.
 3. **Variables** — set at minimum:
    ```
    EXPMS_SECRET_KEY=<openssl rand -hex 32>
-   EXPMS_DATABASE_URL=sqlite:////app/data/expms.db
+   EXPMS_DATABASE_URL=sqlite:////data/expms.db
    EXPMS_CORS_ORIGINS=https://your-railway-domain
    ```
    For Google Drive storage, also set `EXPMS_STORAGE_TYPE=gdrive`,
@@ -114,7 +114,7 @@ storage pricing.
    `GDRIVE_CREDENTIALS_JSON` to the full contents of the service-account
    JSON key. `startup.sh` writes it to `EXPMS_GDRIVE_CREDENTIALS_PATH` on
    container start automatically — no Dockerfile changes needed.
-5. **Volumes** — add a volume mounted at `/app/data` so the SQLite database
+5. **Volumes** — add a volume mounted at `/data` so the SQLite database
    (and local uploads, if using `EXPMS_STORAGE_TYPE=local`) survive
    redeploys. For production-grade Postgres instead, add Railway's
    PostgreSQL plugin and point `EXPMS_DATABASE_URL` at it.
@@ -129,7 +129,7 @@ storage pricing.
 | Symptom | Fix |
 |---|---|
 | Deploy fails at build | Check `Dockerfile` is at repo root and `backend/requirements.txt` is valid |
-| SQLite resets on every deploy | Volume isn't mounted at `/app/data` |
+| SQLite resets on every deploy | Volume isn't mounted at `/data` |
 | `FileNotFoundError: gdrive-credentials.json` | `GDRIVE_CREDENTIALS_JSON` env var not set, or path mismatch |
 | `PermissionError` from Google Drive | Folder not shared with the service account's `client_email`, or shared as Viewer instead of Editor |
 | CORS errors in the browser | `EXPMS_CORS_ORIGINS` doesn't include the frontend's actual origin |

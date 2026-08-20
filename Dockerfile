@@ -37,12 +37,13 @@ COPY startup.sh ./startup.sh
 RUN chmod +x ./startup.sh
 
 # Create data directory for uploads/database (kept outside the app code dir
-# so it survives image rebuilds when mounted as a volume)
-RUN mkdir -p /app/data
+# so it survives image rebuilds when mounted as a volume, e.g. Railway's
+# volume mount path of /data)
+RUN mkdir -p /data
 
 # Default DB/upload locations if not overridden by the deployment platform
-ENV EXPMS_DATABASE_URL=sqlite:////app/data/expms.db
-ENV EXPMS_UPLOAD_DIR=/app/data/uploads
+ENV EXPMS_DATABASE_URL=sqlite:////data/expms.db
+ENV EXPMS_UPLOAD_DIR=/data/uploads
 
 # Tells startup.sh it's running inside this image (deps/frontend already
 # built) rather than bare metal - more reliable than checking /.dockerenv,

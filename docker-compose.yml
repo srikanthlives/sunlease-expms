@@ -8,14 +8,14 @@ services:
     environment:
       # Application
       EXPMS_SECRET_KEY: "${EXPMS_SECRET_KEY:?set EXPMS_SECRET_KEY in .env - generate with: openssl rand -hex 32}"
-      EXPMS_DATABASE_URL: sqlite:////app/data/expms.db
+      EXPMS_DATABASE_URL: sqlite:////data/expms.db
       EXPMS_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
       # Storage: 'local' or 'gdrive'
       EXPMS_STORAGE_TYPE: ${EXPMS_STORAGE_TYPE:-local}
 
       # Local storage (used when EXPMS_STORAGE_TYPE=local)
-      EXPMS_UPLOAD_DIR: /app/data/uploads
+      EXPMS_UPLOAD_DIR: /data/uploads
       EXPMS_MAX_UPLOAD_SIZE_MB: 15
 
       # Google Drive storage (used when EXPMS_STORAGE_TYPE=gdrive)
@@ -23,7 +23,7 @@ services:
       EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
 
     volumes:
-      - ./data:/app/data
+      - ./data:/data
       # Uncomment when EXPMS_STORAGE_TYPE=gdrive (file must exist first)
       # - ./gdrive-credentials.json:/app/gdrive-credentials.json:ro
 
