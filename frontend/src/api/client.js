@@ -1,6 +1,12 @@
 import axios from "axios";
 
-export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// In dev (`npm run dev`), frontend and backend run on different ports
+// (5173 vs 8000), so default to the backend's own origin. In a built
+// production bundle, frontend and backend are served same-origin (FastAPI
+// mounts the built frontend directly), so default to a relative "" instead
+// of hardcoding localhost - a bundle built once and deployed elsewhere must
+// not point back at the visitor's own machine.
+export const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 const client = axios.create({ baseURL: `${BASE_URL}/api/v1` });
 
