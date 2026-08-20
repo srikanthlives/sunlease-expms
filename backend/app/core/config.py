@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Google Drive storage settings
     GDRIVE_FOLDER_ID: str = os.environ.get("EXPMS_GDRIVE_FOLDER_ID", "")
     GDRIVE_CREDENTIALS_PATH: str = os.environ.get("EXPMS_GDRIVE_CREDENTIALS_PATH", "./gdrive-credentials.json")
+    # Fallback when the credentials file isn't mounted: the service-account JSON
+    # itself, passed inline as an env var (e.g. platforms without volume mounts).
+    GDRIVE_CREDENTIALS_JSON: str = os.environ.get("EXPMS_GDRIVE_CREDENTIALS_JSON", "")
     
     # File upload restrictions
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("EXPMS_MAX_UPLOAD_SIZE_MB", "15"))

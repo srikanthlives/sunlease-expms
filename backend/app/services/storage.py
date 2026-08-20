@@ -2,6 +2,7 @@
 Storage abstraction layer supporting local filesystem and Google Drive.
 """
 import datetime as dt
+import json
 import os
 from abc import ABC, abstractmethod
 from io import BytesIO
@@ -102,14 +103,35 @@ class GoogleDriveStorageBackend(StorageBackend):
         if not self.folder_id:
             raise ValueError("EXPMS_GDRIVE_FOLDER_ID must be set for Google Drive storage")
         
-        # Load credentials from JSON key file
-        if not os.path.exists(settings.GDRIVE_CREDENTIALS_PATH):
-            raise FileNotFoundError(f"Google Drive credentials file not found: {settings.GDRIVE_CREDENTIALS_PATH}")
-        
-        credentials = Credentials.from_service_account_file(
-            settings.GDRIVE_CREDENTIALS_PATH,
-            scopes=['https://www.googleapis.com/auth/drive']
-        )
+        # Load credentials: prefer the mounted key file, fall back to the raw
+        # JSON passed inline via EXPMS_GDRIVE_CREDENTIALS_JSON for platforms
+        # that can't mount a file.
+        if os.path.exists(settings.GDRIVE_CREDENTIALS_PATH):
+            print(f"[INFO] Using Google Drive credentials file at '{settings.GDRIVE_CREDENTIALS_PATH}'")
+            credentials = Credentials.from_service_account_file(
+                settings.GDRIVE_CREDENTIALS_PATH,
+                scopes=['https://www.googleapis.com/auth/drive']
+            )
+        elif settings.GDRIVE_CREDENTIALS_JSON:
+            print("[INFO] Using Google Drive credentials from EXPMS_GDRIVE_CREDENTIALS_JSON")
+            try:
+                info = json.loads(settings.GDRIVE_CREDENTIALS_JSON)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"EXPMS_GDRIVE_CREDENTIALS_JSON is not valid JSON: {e}")
+            credentials = Credentials.from_service_account_info(
+                info,
+                scopes=['https://www.googleapis.com/auth/drive']
+            )
+        else:
+            print(
+                f"[ERROR] Google Drive storage selected but no credentials found: "
+                f"'{settings.GDRIVE_CREDENTIALS_PATH}' does not exist and "
+                f"EXPMS_GDRIVE_CREDENTIALS_JSON is not set."
+            )
+            raise FileNotFoundError(
+                f"Google Drive credentials not found. Provide either the file at "
+                f"{settings.GDRIVE_CREDENTIALS_PATH} or set EXPMS_GDRIVE_CREDENTIALS_JSON."
+            )
         
         self.drive_service = build('drive', 'v3', credentials=credentials)
         

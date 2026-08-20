@@ -21,10 +21,14 @@ services:
       # Google Drive storage (used when EXPMS_STORAGE_TYPE=gdrive)
       EXPMS_GDRIVE_FOLDER_ID: ${EXPMS_GDRIVE_FOLDER_ID:-}
       EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
+      # Fallback if the credentials file isn't mounted below: paste the
+      # service-account JSON directly into EXPMS_GDRIVE_CREDENTIALS_JSON in .env.
+      EXPMS_GDRIVE_CREDENTIALS_JSON: ${EXPMS_GDRIVE_CREDENTIALS_JSON:-}
 
     volumes:
       - ./data:/data
-      # Uncomment when EXPMS_STORAGE_TYPE=gdrive (file must exist first)
+      # Uncomment when EXPMS_STORAGE_TYPE=gdrive and using the file (must exist first).
+      # Not needed if you're setting EXPMS_GDRIVE_CREDENTIALS_JSON instead.
       # - ./gdrive-credentials.json:/app/gdrive-credentials.json:ro
 
     healthcheck:
