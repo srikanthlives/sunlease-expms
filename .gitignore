@@ -68,9 +68,7 @@ expms.db
 .env.local
 .env.*.local
 
-# Google Drive / Credentials (NEVER commit these!)
-gdrive-credentials.json
-gdrive-credentials.json.json
+# Credentials (NEVER commit these!)
 *-credentials.json
 *-credentials.json.json
 *.json.key

@@ -9,15 +9,18 @@ without Docker, see [README.md](./README.md).
 |----------|---------|-------|
 | `EXPMS_SECRET_KEY` | *(none — required)* | JWT signing key. Generate with `openssl rand -hex 32`. Never commit a real value. |
 | `EXPMS_DATABASE_URL` | `sqlite:///../data/expms.db` | Or `postgresql://user:pass@host/dbname` |
-| `EXPMS_STORAGE_TYPE` | `local` | `local` or `gdrive` |
+| `EXPMS_STORAGE_TYPE` | `local` | `local` or `r2` |
 | `EXPMS_UPLOAD_DIR` | `../data/uploads` | Used when `EXPMS_STORAGE_TYPE=local` |
-| `EXPMS_GDRIVE_FOLDER_ID` | *(empty)* | Used when `EXPMS_STORAGE_TYPE=gdrive` |
-| `EXPMS_GDRIVE_CREDENTIALS_PATH` | `./gdrive-credentials.json` | Path to the service-account JSON key |
+| `EXPMS_R2_ACCOUNT_ID` | *(empty)* | Used when `EXPMS_STORAGE_TYPE=r2` |
+| `EXPMS_R2_ACCESS_KEY_ID` | *(empty)* | R2 API token access key |
+| `EXPMS_R2_SECRET_ACCESS_KEY` | *(empty)* | R2 API token secret |
+| `EXPMS_R2_BUCKET_NAME` | *(empty)* | Target bucket |
+| `EXPMS_R2_PREFIX` | `SUNLEASE` | Root key prefix all uploads are stored under in the bucket |
 | `EXPMS_MAX_UPLOAD_SIZE_MB` | `15` | |
 | `EXPMS_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
 
-Copy `.env.example` to `.env` and fill in real values. `.env` and
-`gdrive-credentials.json` are gitignored — never commit either.
+Copy `.env.example` to `.env` and fill in real values. `.env` is
+gitignored — never commit it.
 
 ## Docker
 
@@ -58,8 +61,8 @@ docker run -p 8000:8000 \
 ## Storage backends
 
 Files are organized as `<project-code>/<year>/<month>/W<week>/<uuid4>.<ext>`
-under either the local upload dir or the Google Drive folder — same layout
-either way.
+under either the local upload dir or, for R2, under the `EXPMS_R2_PREFIX`
+root folder in the bucket — same layout either way.
 
 ### Local (default, good for dev / single-server deployments)
 
@@ -70,32 +73,28 @@ EXPMS_UPLOAD_DIR=../data/uploads
 
 No further setup — the directory is created automatically on first run.
 
-### Google Drive (good when you want offsite backup without running Postgres/S3)
+### Cloudflare R2 (recommended for production — S3-compatible object storage)
 
-1. In [Google Cloud Console](https://console.cloud.google.com/), create/select
-   a project and enable the **Google Drive API**.
-2. **IAM & Admin → Service Accounts → Create Service Account.** Add a JSON
-   key (**Keys → Add Key → Create new key → JSON**) and download it.
-3. In [Google Drive](https://drive.google.com), create a folder for
-   attachments. Share it with the service account's `client_email` (from
-   the JSON key) as **Editor**.
-4. Copy the folder ID from the folder's URL
-   (`.../drive/folders/<FOLDER_ID>`).
-5. Set:
+1. In the [Cloudflare dashboard](https://dash.cloudflare.com/), go to **R2**
+   and create a bucket.
+2. **Manage R2 API Tokens → Create API Token**, with **Object Read & Write**
+   permission scoped to that bucket. Note the Access Key ID and Secret
+   Access Key shown (the secret is only shown once).
+3. Copy the **Account ID** from the R2 overview page.
+4. Set:
    ```
-   EXPMS_STORAGE_TYPE=gdrive
-   EXPMS_GDRIVE_FOLDER_ID=<folder-id-from-step-4>
-   EXPMS_GDRIVE_CREDENTIALS_PATH=./gdrive-credentials.json
+   EXPMS_STORAGE_TYPE=r2
+   EXPMS_R2_ACCOUNT_ID=<account-id-from-step-3>
+   EXPMS_R2_ACCESS_KEY_ID=<access-key-id-from-step-2>
+   EXPMS_R2_SECRET_ACCESS_KEY=<secret-access-key-from-step-2>
+   EXPMS_R2_BUCKET_NAME=<bucket-name-from-step-1>
+   EXPMS_R2_PREFIX=SUNLEASE
    ```
-   (place the downloaded key at that path — it's gitignored).
-6. Verify: `python -c "from app.services.storage import get_storage; get_storage()"`
+5. Verify: `python -c "from app.services.storage import get_storage; get_storage()"`
    from `backend/` — no exception means it connected.
 
 Switching backends does **not** migrate existing files — old files stay
 wherever they were written; only new uploads follow the new setting.
-
-Google Drive free tier is 15GB; beyond that it's Google's standard Drive
-storage pricing.
 
 ## Railway deployment
 
@@ -107,21 +106,17 @@ storage pricing.
    EXPMS_DATABASE_URL=sqlite:////data/expms.db
    EXPMS_CORS_ORIGINS=https://your-railway-domain
    ```
-   For Google Drive storage, also set `EXPMS_STORAGE_TYPE=gdrive`,
-   `EXPMS_GDRIVE_FOLDER_ID`, and `EXPMS_GDRIVE_CREDENTIALS_PATH=/app/gdrive-credentials.json`.
-4. **Credentials for Google Drive on Railway** (no persistent file upload
-   in the dashboard, so pass the JSON as an env var instead): set
-   `GDRIVE_CREDENTIALS_JSON` to the full contents of the service-account
-   JSON key. `startup.sh` writes it to `EXPMS_GDRIVE_CREDENTIALS_PATH` on
-   container start automatically — no Dockerfile changes needed.
-5. **Volumes** — add a volume mounted at `/data` so the SQLite database
+   For R2 storage, also set `EXPMS_STORAGE_TYPE=r2` and the `EXPMS_R2_*`
+   variables from the R2 setup steps above — no file mounts needed, R2 auth
+   is entirely env-var based.
+4. **Volumes** — add a volume mounted at `/data` so the SQLite database
    (and local uploads, if using `EXPMS_STORAGE_TYPE=local`) survive
    redeploys. For production-grade Postgres instead, add Railway's
    PostgreSQL plugin and point `EXPMS_DATABASE_URL` at it.
-6. Push to `main` — Railway redeploys automatically. First deploy: run
+5. Push to `main` — Railway redeploys automatically. First deploy: run
    `python -m app.seed` once via the Railway terminal to create the initial
    users.
-7. Optional: **Settings → Domain → Add Custom Domain**, then add the CNAME
+6. Optional: **Settings → Domain → Add Custom Domain**, then add the CNAME
    Railway gives you at your DNS provider. SSL is automatic.
 
 ### Troubleshooting
@@ -130,8 +125,8 @@ storage pricing.
 |---|---|
 | Deploy fails at build | Check `Dockerfile` is at repo root and `backend/requirements.txt` is valid |
 | SQLite resets on every deploy | Volume isn't mounted at `/data` |
-| `FileNotFoundError: gdrive-credentials.json` | `GDRIVE_CREDENTIALS_JSON` env var not set, or path mismatch |
-| `PermissionError` from Google Drive | Folder not shared with the service account's `client_email`, or shared as Viewer instead of Editor |
+| `ValueError: EXPMS_R2_*` missing | One of the required R2 env vars isn't set |
+| `403`/`404` from R2 | Bucket name mismatch, or the API token isn't scoped to that bucket |
 | CORS errors in the browser | `EXPMS_CORS_ORIGINS` doesn't include the frontend's actual origin |
 
 ### Health check

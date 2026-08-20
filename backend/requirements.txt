@@ -9,7 +9,6 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 python-dateutil==2.8.2
 
-# Google Drive Storage (optional, only needed if EXPMS_STORAGE_TYPE=gdrive)
-google-auth-oauthlib==1.2.0
-google-auth-httplib2==0.2.0
-google-api-python-client==2.108.0
+# Cloudflare R2 Storage (optional, only needed if EXPMS_STORAGE_TYPE=r2) -
+# R2 is S3-compatible, so the standard AWS SDK talks to it via a custom endpoint.
+boto3==1.34.162

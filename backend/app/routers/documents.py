@@ -112,7 +112,7 @@ async def download_document(document_id: int, db: Session = Depends(get_db), use
             raise HTTPException(status.HTTP_404_NOT_FOUND, "File missing on server")
         return FileResponse(doc.file_path, media_type=doc.mime_type, filename=doc.original_filename)
     else:
-        # Google Drive: stream file from cloud storage
+        # Remote storage (R2 etc.): stream file from cloud storage
         file_content = await storage.retrieve_file(doc.stored_filename)
         return StreamingResponse(
             iter([file_content]),

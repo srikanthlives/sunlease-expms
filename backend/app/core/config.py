@@ -10,18 +10,22 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12
     DATABASE_URL: str = os.environ.get("EXPMS_DATABASE_URL", "sqlite:///../data/expms.db")
     
-    # Storage backend: 'local' or 'gdrive' (Google Drive)
+    # Storage backend: 'local' or 'r2' (Cloudflare R2)
     STORAGE_TYPE: str = os.environ.get("EXPMS_STORAGE_TYPE", "local")
-    
+
     # Local storage settings
     UPLOAD_DIR: str = os.environ.get("EXPMS_UPLOAD_DIR", "../data/uploads")
-    
-    # Google Drive storage settings
-    GDRIVE_FOLDER_ID: str = os.environ.get("EXPMS_GDRIVE_FOLDER_ID", "")
-    GDRIVE_CREDENTIALS_PATH: str = os.environ.get("EXPMS_GDRIVE_CREDENTIALS_PATH", "./gdrive-credentials.json")
-    # Fallback when the credentials file isn't mounted: the service-account JSON
-    # itself, passed inline as an env var (e.g. platforms without volume mounts).
-    GDRIVE_CREDENTIALS_JSON: str = os.environ.get("EXPMS_GDRIVE_CREDENTIALS_JSON", "")
+
+    # Cloudflare R2 storage settings (used when EXPMS_STORAGE_TYPE=r2)
+    R2_ACCOUNT_ID: str = os.environ.get("EXPMS_R2_ACCOUNT_ID", "")
+    R2_ACCESS_KEY_ID: str = os.environ.get("EXPMS_R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.environ.get("EXPMS_R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME: str = os.environ.get("EXPMS_R2_BUCKET_NAME", "")
+    # Optional override - by default derived from the account id as
+    # https://<account_id>.r2.cloudflarestorage.com
+    R2_ENDPOINT_URL: str = os.environ.get("EXPMS_R2_ENDPOINT_URL", "")
+    # Root "folder" (key prefix) under which every uploaded file is stored in the bucket.
+    R2_PREFIX: str = os.environ.get("EXPMS_R2_PREFIX", "SUNLEASE")
     
     # File upload restrictions
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("EXPMS_MAX_UPLOAD_SIZE_MB", "15"))

@@ -11,25 +11,23 @@ services:
       EXPMS_DATABASE_URL: sqlite:////data/expms.db
       EXPMS_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000
 
-      # Storage: 'local' or 'gdrive'
+      # Storage: 'local' or 'r2'
       EXPMS_STORAGE_TYPE: ${EXPMS_STORAGE_TYPE:-local}
 
       # Local storage (used when EXPMS_STORAGE_TYPE=local)
       EXPMS_UPLOAD_DIR: /data/uploads
       EXPMS_MAX_UPLOAD_SIZE_MB: 15
 
-      # Google Drive storage (used when EXPMS_STORAGE_TYPE=gdrive)
-      EXPMS_GDRIVE_FOLDER_ID: ${EXPMS_GDRIVE_FOLDER_ID:-}
-      EXPMS_GDRIVE_CREDENTIALS_PATH: /app/gdrive-credentials.json
-      # Fallback if the credentials file isn't mounted below: paste the
-      # service-account JSON directly into EXPMS_GDRIVE_CREDENTIALS_JSON in .env.
-      EXPMS_GDRIVE_CREDENTIALS_JSON: ${EXPMS_GDRIVE_CREDENTIALS_JSON:-}
+      # Cloudflare R2 storage (used when EXPMS_STORAGE_TYPE=r2)
+      EXPMS_R2_ACCOUNT_ID: ${EXPMS_R2_ACCOUNT_ID:-}
+      EXPMS_R2_ACCESS_KEY_ID: ${EXPMS_R2_ACCESS_KEY_ID:-}
+      EXPMS_R2_SECRET_ACCESS_KEY: ${EXPMS_R2_SECRET_ACCESS_KEY:-}
+      EXPMS_R2_BUCKET_NAME: ${EXPMS_R2_BUCKET_NAME:-}
+      EXPMS_R2_ENDPOINT_URL: ${EXPMS_R2_ENDPOINT_URL:-}
+      EXPMS_R2_PREFIX: ${EXPMS_R2_PREFIX:-SUNLEASE}
 
     volumes:
       - ./data:/data
-      # Uncomment when EXPMS_STORAGE_TYPE=gdrive and using the file (must exist first).
-      # Not needed if you're setting EXPMS_GDRIVE_CREDENTIALS_JSON instead.
-      # - ./gdrive-credentials.json:/app/gdrive-credentials.json:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
