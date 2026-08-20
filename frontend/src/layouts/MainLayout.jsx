@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import logo from "../assets/logo.png";
+import logoIcon from "../assets/logo_icon.png";
 import {
   LayoutDashboard, Receipt, FileText, Wallet, ClipboardList, CheckSquare,
   BarChart3, Users, Building2, Landmark, Tag, Tags, ShieldCheck, LogOut, ScrollText, UserCog, FileEdit,
@@ -83,11 +85,17 @@ export default function MainLayout() {
     <div className="min-h-screen flex bg-[#F7F5F0]">
       <aside className={`shrink-0 bg-ink text-white flex flex-col transition-[width] duration-200 ${collapsed ? "w-16" : "w-60"}`}>
         <div className={`px-5 py-5 flex items-center gap-2.5 border-b border-white/10 ${collapsed ? "px-3 justify-center" : ""}`}>
-          <div className="w-8 h-8 rounded bg-accent-500 flex items-center justify-center font-display font-semibold shrink-0">₹</div>
-          {!collapsed && (
-            <div>
-              <div className="font-display font-semibold leading-tight">Ledger</div>
-              <div className="text-[10px] text-white/40 uppercase tracking-wide">Expense &amp; Payments</div>
+          {collapsed ? (
+            <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shrink-0 overflow-hidden p-1.5">
+              <img src={logoIcon} alt="Sunlease" className="w-full h-full object-contain" />
+            </div>
+          ) : (
+            <div className="w-full rounded-lg bg-white px-3 py-2.5 flex flex-col gap-1">
+              <img src={logo} alt="Sunlease" className="h-6 w-auto object-contain self-start" />
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-display font-semibold text-ink leading-tight text-sm">Ledger</span>
+                <span className="text-[9px] text-ink/40 uppercase tracking-wide">Expense &amp; Payments</span>
+              </div>
             </div>
           )}
         </div>
