@@ -148,6 +148,7 @@ class Vendor(Base):
     id = Column(Integer, primary_key=True)
     vendor_code = Column(String(50), unique=True, nullable=False)
     vendor_name = Column(String(255), nullable=False)
+    location = Column(String(255))
     gstin = Column(String(20))
     contact_person = Column(String(150))
     phone = Column(String(50))

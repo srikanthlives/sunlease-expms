@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -57,7 +57,7 @@ export default function Expenses() {
 
   const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
-  const vendorName = (id) => masters.vendors.find((v) => v.id === id)?.vendor_name || "—";
+  const vendorName = (id) => { const v = masters.vendors.find((v) => v.id === id); return v ? vendorLabel(v) : "—"; };
   const employeeName = (id) => masters.employees.find((e) => e.id === id)?.employee_name || "—";
   const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";

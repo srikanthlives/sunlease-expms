@@ -88,6 +88,11 @@ export function Select({ label, children, className = "", ...props }) {
   );
 }
 
+export function vendorLabel(vendor) {
+  if (!vendor) return "";
+  return vendor.location ? `${vendor.vendor_name} (${vendor.location})` : vendor.vendor_name;
+}
+
 export function formatMoney(amount) {
   const n = Number(amount || 0);
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

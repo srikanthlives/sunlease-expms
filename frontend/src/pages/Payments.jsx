@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, Button, Input, Select, formatMoney } from "../components/ui";
+import { Card, Table, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -40,7 +40,7 @@ export default function Payments() {
   useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter]);
 
   function payeeOf(r) {
-    if (r.vendor_id) return masters.vendors.find((v) => v.id === r.vendor_id)?.vendor_name || "—";
+    if (r.vendor_id) { const v = masters.vendors.find((v) => v.id === r.vendor_id); return v ? vendorLabel(v) : "—"; }
     if (r.employee_id) return masters.employees.find((e) => e.id === r.employee_id)?.employee_name || "—";
     return "Direct Expense";
   }
@@ -199,7 +199,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
           {payeeType === "vendor" && (
             <Select label="Vendor" value={form.vendor_id} onChange={(e) => { set("vendor_id", e.target.value); setAllocations([]); }} required>
               <option value="">Select…</option>
-              {masters.vendors.map((v) => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
+              {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
             </Select>
           )}
           {payeeType === "employee" && (

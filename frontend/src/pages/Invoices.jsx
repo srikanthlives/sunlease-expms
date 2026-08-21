@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
@@ -20,7 +20,7 @@ export default function Invoices() {
   function load() { client.get("/invoices").then((res) => setInvoices(res.data)); }
   useEffect(load, []);
 
-  const vendorName = (id) => masters.vendors.find((v) => v.id === id)?.vendor_name || id;
+  const vendorName = (id) => { const v = masters.vendors.find((v) => v.id === id); return v ? vendorLabel(v) : id; };
 
   return (
     <div className="space-y-6">
@@ -116,7 +116,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
         <div className="grid grid-cols-2 gap-4">
           <Select label="Vendor" value={form.vendor_id} onChange={(e) => set("vendor_id", e.target.value)} required>
             <option value="">Select…</option>
-            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{v.vendor_name}</option>)}
+            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
           </Select>
           <Input label="Invoice Number" value={form.invoice_number} onChange={(e) => set("invoice_number", e.target.value)} required />
           <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={(e) => set("invoice_date", e.target.value)} required />

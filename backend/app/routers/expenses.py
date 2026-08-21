@@ -25,7 +25,9 @@ def _to_out(db: Session, e: Expense) -> ExpenseOut:
 
 def _payee_of(e: Expense) -> str:
     if e.source_type == SourceType.INVOICE:
-        return e.vendor.vendor_name if e.vendor else ""
+        if not e.vendor:
+            return ""
+        return f"{e.vendor.vendor_name} ({e.vendor.location})" if e.vendor.location else e.vendor.vendor_name
     if e.source_type == SourceType.EMPLOYEE_CLAIM:
         return e.employee.employee_name if e.employee else ""
     return e.supplier_name or ""

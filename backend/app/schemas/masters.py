@@ -64,6 +64,7 @@ class EmployeeDetailOut(EmployeeOut):
 class VendorBase(BaseModel):
     vendor_code: str
     vendor_name: str
+    location: str | None = None
     gstin: str | None = None
     contact_person: str | None = None
     phone: str | None = None

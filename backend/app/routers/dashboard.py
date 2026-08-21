@@ -217,8 +217,9 @@ def vendor_outstanding(db: Session = Depends(get_db), user: User = Depends(get_c
         if invoiced <= 0:
             continue
         actual_paid = sum(get_paid_amount(db, e.id) for e in expenses)
+        vendor_name = f"{v.vendor_name} ({v.location})" if v.location else v.vendor_name
         result.append({
-            "vendor_id": v.id, "vendor_name": v.vendor_name,
+            "vendor_id": v.id, "vendor_name": vendor_name,
             "invoiced": _d(invoiced), "paid": _d(actual_paid), "outstanding": _d(invoiced - actual_paid),
         })
     return result

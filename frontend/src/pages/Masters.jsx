@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
-import { Card, Table, Button, Input, Select } from "../components/ui";
+import { Card, Table, Button, Input, Select, vendorLabel } from "../components/ui";
 import { Plus, X, Pencil } from "lucide-react";
 
 function emptyForm(fields) {
@@ -227,12 +227,15 @@ export function VendorsMaster() {
     <MasterPage
       title="Vendors" subtitle="Supplier / vendor master." endpoint="/vendors"
       columns={[
-        { key: "vendor_code", header: "Code" }, { key: "vendor_name", header: "Name" },
+        { key: "vendor_code", header: "Code" },
+        { key: "vendor_name", header: "Name", render: (row) => vendorLabel(row) },
+        { key: "location", header: "Location" },
         { key: "gstin", header: "GSTIN" }, { key: "phone", header: "Phone" },
       ]}
       fields={[
         { key: "vendor_code", label: "Vendor Code", required: true },
         { key: "vendor_name", label: "Vendor Name", required: true },
+        { key: "location", label: "Location" },
         { key: "gstin", label: "GSTIN" },
         { key: "phone", label: "Phone" },
         { key: "email", label: "Email" },

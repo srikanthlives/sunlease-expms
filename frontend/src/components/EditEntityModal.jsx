@@ -2,7 +2,7 @@ import { useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Button, Input, Select } from "./ui";
+import { Card, Button, Input, Select, vendorLabel } from "./ui";
 import { X, CheckCircle2 } from "lucide-react";
 
 const FIELD_SETS = {
@@ -20,7 +20,7 @@ const FIELD_SETS = {
   ],
   INVOICE: (masters) => [
     { key: "invoice_number", label: "Invoice Number", type: "text" },
-    { key: "vendor_id", label: "Vendor", type: "select", options: masters.vendors, optionLabel: "vendor_name" },
+    { key: "vendor_id", label: "Vendor", type: "select", options: masters.vendors, optionLabel: vendorLabel },
     { key: "invoice_date", label: "Invoice Date", type: "date" },
     { key: "due_date", label: "Due Date", type: "date" },
     { key: "project_id", label: "Project", type: "select", options: masters.projects, optionLabel: "name" },
@@ -131,7 +131,7 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
                     <option value="">— none —</option>
                     {(f.dependsOn ? f.options.filter((o) => String(o.category_id) === String(form[f.dependsOn])) : f.options).map((o) => (
                       <option key={o.id} value={o.id}>
-                        {f.staticOptions ? o.id : o[f.optionLabel]}
+                        {f.staticOptions ? o.id : (typeof f.optionLabel === "function" ? f.optionLabel(o) : o[f.optionLabel])}
                       </option>
                     ))}
                   </Select>

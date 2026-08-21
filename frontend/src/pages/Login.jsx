@@ -44,9 +44,6 @@ export default function Login() {
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>
-        <p className="text-white/30 text-xs text-center mt-5">
-          Seeded logins — admin/Admin@123 · accounts/Accounts@123 · manager/Manager@123 · ajai/Employee@123
-        </p>
       </div>
     </div>
   );
