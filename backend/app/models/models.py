@@ -418,6 +418,87 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=now)
 
 
+class RecurringExpense(Base):
+    """Template for a bill that recurs on a fixed schedule (rent, internet,
+    power bill, etc.). Does not itself post to the ledger - each cycle it
+    spawns a RecurringExpenseInstance a configurable number of days ahead of
+    the actual bill date, which goes through Accounts review + Admin
+    approval before becoming a real Expense (see recurring_expense_service)."""
+
+    __tablename__ = "recurring_expenses"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    frequency = Column(String(20), nullable=False)  # RecurrenceFrequency
+    amount_type = Column(String(10), nullable=False)  # RecurringAmountType
+    # Required (and used to pre-fill each instance) when amount_type=FIXED.
+    # Still editable per-instance by Accounts if a particular bill changed.
+    fixed_amount = Column(Numeric(14, 2), nullable=True)
+    # How many days before next_occurrence_date an approval instance is
+    # generated - the "goes to approval a few days before the actual bill
+    # date" lead time, configurable per recurring expense.
+    lead_days = Column(Integer, nullable=False, default=7)
+    # Bill due date = occurrence_date + due_in_days. Null = no due date tracked.
+    due_in_days = Column(Integer, nullable=True)
+
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=False)
+    sub_category_id = Column(Integer, ForeignKey("expense_sub_categories.id"), nullable=True)
+    description = Column(Text)
+
+    # Next bill date this template will generate an instance for. Advances by
+    # one `frequency` step every time an instance is generated for it.
+    next_occurrence_date = Column(Date, nullable=False)
+    is_active = Column(Boolean, default=True)
+
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    project = relationship("Project", foreign_keys=[project_id])
+    vendor = relationship("Vendor", foreign_keys=[vendor_id])
+    employee = relationship("Employee", foreign_keys=[employee_id])
+    category = relationship("ExpenseCategory", foreign_keys=[category_id])
+    sub_category = relationship("ExpenseSubCategory", foreign_keys=[sub_category_id])
+
+
+class RecurringExpenseInstance(Base):
+    """One generated occurrence of a RecurringExpense, working through the
+    two-stage approval (Accounts, then Admin/Super Admin) before becoming an
+    actual Expense."""
+
+    __tablename__ = "recurring_expense_instances"
+
+    id = Column(Integer, primary_key=True)
+    recurring_expense_id = Column(Integer, ForeignKey("recurring_expenses.id"), nullable=False)
+    occurrence_date = Column(Date, nullable=False)  # the bill date this instance represents
+    due_date = Column(Date, nullable=True)
+    # Pre-filled with the template's fixed_amount for FIXED; null (Accounts
+    # must fill it in) for OPEN.
+    amount = Column(Numeric(14, 2), nullable=True)
+    description = Column(Text)
+
+    status = Column(String(30), nullable=False, default="PENDING_ACCOUNTS_REVIEW")  # RecurringInstanceStatus
+
+    accounts_reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    accounts_reviewed_at = Column(DateTime, nullable=True)
+    admin_reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    admin_reviewed_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+
+    expense_id = Column(Integer, ForeignKey("expenses.id"), nullable=True)  # set once Admin-approved
+    generated_at = Column(DateTime, default=now)
+
+    recurring_expense = relationship("RecurringExpense", foreign_keys=[recurring_expense_id])
+    expense = relationship("Expense", foreign_keys=[expense_id])
+    accounts_reviewer = relationship("User", foreign_keys=[accounts_reviewed_by])
+    admin_reviewer = relationship("User", foreign_keys=[admin_reviewed_by])
+
+    __table_args__ = (UniqueConstraint("recurring_expense_id", "occurrence_date", name="uq_recurring_instance_occurrence"),)
+
+
 class EditRequest(Base):
     """A proposed edit to an already-posted Expense/Invoice/Payment, made by
     an Accounts user, pending Admin/Super Admin review. Admin/Super Admin

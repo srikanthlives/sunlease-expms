@@ -6,7 +6,7 @@ import logoIcon from "../assets/logo_icon.png";
 import {
   LayoutDashboard, Receipt, FileText, Wallet, ClipboardList, CheckSquare,
   BarChart3, Users, Building2, Landmark, Tag, Tags, ShieldCheck, LogOut, ScrollText, UserCog, FileEdit,
-  ChevronsLeft, ChevronsRight,
+  ChevronsLeft, ChevronsRight, Repeat,
 } from "lucide-react";
 
 const COLLAPSE_KEY = "expms_sidebar_collapsed";
@@ -21,6 +21,7 @@ const NAV = [
       { to: "/invoices", label: "Invoices", icon: FileText },
       { to: "/payments", label: "Payments", icon: Wallet },
       { to: "/claims", label: "Employee Claims", icon: ClipboardList },
+      { to: "/recurring-expenses", label: "Recurring Expenses", icon: Repeat },
     ],
   },
   {
@@ -31,7 +32,10 @@ const NAV = [
   {
     section: "Approvals",
     roles: ["ADMIN", "SUPER_ADMIN", "MANAGER", "ACCOUNTS"],
-    items: [{ to: "/approvals", label: "Claim Approvals", icon: CheckSquare }],
+    items: [
+      { to: "/approvals", label: "Claim Approvals", icon: CheckSquare },
+      { to: "/recurring-expenses/approvals", label: "Recurring Expense Approvals", icon: Repeat, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"] },
+    ],
   },
   {
     section: "Edit Requests",
@@ -100,7 +104,10 @@ export default function MainLayout() {
           )}
         </div>
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-3 px-3 space-y-5">
-          {NAV.filter((s) => !s.roles || s.roles.includes(user?.role)).map((section) => (
+          {NAV.filter((s) => !s.roles || s.roles.includes(user?.role))
+            .map((section) => ({ ...section, items: section.items.filter((i) => !i.roles || i.roles.includes(user?.role)) }))
+            .filter((section) => section.items.length > 0)
+            .map((section) => (
             <div key={section.section || "root"}>
               {section.section && !collapsed && (
                 <div className="text-[10px] uppercase tracking-widest text-white/30 font-medium px-2 mb-1.5">

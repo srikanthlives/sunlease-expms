@@ -30,6 +30,8 @@ const STATUS_STYLES = {
   PENDING: "bg-accent-500/10 text-accent-600 border-accent-500/30",
   SUBMITTED: "bg-brand-500/10 text-brand-700 border-brand-500/30",
   PENDING_ACCOUNTS_APPROVAL: "bg-accent-500/10 text-accent-600 border-accent-500/30",
+  PENDING_ACCOUNTS_REVIEW: "bg-accent-500/10 text-accent-600 border-accent-500/30",
+  PENDING_ADMIN_APPROVAL: "bg-brand-500/10 text-brand-700 border-brand-500/30",
   DRAFT: "bg-ink/5 text-ink/50 border-ink/15",
   CANCELLED: "bg-danger/10 text-danger border-danger/30",
   ACTIVE: "bg-ok/10 text-ok border-ok/30",

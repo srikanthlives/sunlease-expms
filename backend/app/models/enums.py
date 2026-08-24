@@ -22,6 +22,7 @@ class SourceType:
     INVOICE = "INVOICE"
     DIRECT_EXPENSE = "DIRECT_EXPENSE"
     EMPLOYEE_CLAIM = "EMPLOYEE_CLAIM"
+    RECURRING_EXPENSE = "RECURRING_EXPENSE"
 
 
 class ExpenseStatus:
@@ -90,3 +91,31 @@ class EditableEntityType:
     EXPENSE = "EXPENSE"
     INVOICE = "INVOICE"
     PAYMENT = "PAYMENT"
+
+
+class RecurrenceFrequency:
+    WEEKLY = "WEEKLY"
+    BIWEEKLY = "BIWEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    HALF_YEARLY = "HALF_YEARLY"
+    ANNUALLY = "ANNUALLY"
+
+    ALL = [WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, HALF_YEARLY, ANNUALLY]
+
+
+class RecurringAmountType:
+    FIXED = "FIXED"
+    OPEN = "OPEN"
+
+    ALL = [FIXED, OPEN]
+
+
+class RecurringInstanceStatus:
+    # Awaiting Accounts: for OPEN amount type they must fill in the actual
+    # bill amount; for FIXED they may correct it if the bill changed. Either
+    # way Accounts must act before it goes to Admin.
+    PENDING_ACCOUNTS_REVIEW = "PENDING_ACCOUNTS_REVIEW"
+    PENDING_ADMIN_APPROVAL = "PENDING_ADMIN_APPROVAL"
+    APPROVED = "APPROVED"  # Expense created
+    REJECTED = "REJECTED"

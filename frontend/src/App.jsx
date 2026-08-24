@@ -17,6 +17,8 @@ import { EmployeesMaster, VendorsMaster, ProjectsMaster, AccountsMaster, Categor
 import AuditLogs from "./pages/AuditLogs";
 import UsersAdmin from "./pages/UsersAdmin";
 import EditRequests from "./pages/EditRequests";
+import RecurringExpenses from "./pages/RecurringExpenses";
+import RecurringExpenseApprovals from "./pages/RecurringExpenseApprovals";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -61,6 +63,8 @@ export default function App() {
             <Route path="admin/audit-logs" element={<AuditLogs />} />
             <Route path="admin/users" element={<UsersAdmin />} />
             <Route path="edit-requests" element={<EditRequests />} />
+            <Route path="recurring-expenses" element={<RecurringExpenses />} />
+            <Route path="recurring-expenses/approvals" element={<RecurringExpenseApprovals />} />
           </Route>
         </Routes>
       </AuthProvider>
