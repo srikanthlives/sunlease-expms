@@ -223,24 +223,133 @@ export function EmployeesMaster() {
 }
 
 export function VendorsMaster() {
+  const [vendors, setVendors] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const emptyForm = {
+    vendor_code: "", vendor_name: "", location: "", gstin: "", phone: "", email: "", project_ids: [],
+  };
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    client.get("/vendors").then((res) => setVendors(res.data));
+    client.get("/projects").then((res) => setProjects(res.data));
+  }
+  useEffect(load, []);
+
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setError("");
+    setShowForm(true);
+  }
+
+  function openEdit(v) {
+    setEditingId(v.id);
+    setForm({
+      vendor_code: v.vendor_code, vendor_name: v.vendor_name, location: v.location || "",
+      gstin: v.gstin || "", phone: v.phone || "", email: v.email || "", project_ids: v.project_ids || [],
+    });
+    setError("");
+    setShowForm(true);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      if (editingId != null) {
+        await client.put(`/vendors/${editingId}`, form);
+      } else {
+        await client.post("/vendors", form);
+      }
+      setShowForm(false);
+      setEditingId(null);
+      setForm(emptyForm);
+      load();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const projectNames = (ids) => (ids && ids.length > 0 ? projects.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ") : "All projects");
+
   return (
-    <MasterPage
-      title="Vendors" subtitle="Supplier / vendor master." endpoint="/vendors"
-      columns={[
-        { key: "vendor_code", header: "Code" },
-        { key: "vendor_name", header: "Name", render: (row) => vendorLabel(row) },
-        { key: "location", header: "Location" },
-        { key: "gstin", header: "GSTIN" }, { key: "phone", header: "Phone" },
-      ]}
-      fields={[
-        { key: "vendor_code", label: "Vendor Code", required: true },
-        { key: "vendor_name", label: "Vendor Name", required: true },
-        { key: "location", label: "Location" },
-        { key: "gstin", label: "GSTIN" },
-        { key: "phone", label: "Phone" },
-        { key: "email", label: "Email" },
-      ]}
-    />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-semibold">Vendors</h1>
+          <p className="text-sm text-ink/50 mt-0.5">Supplier / vendor master, and which projects each vendor can be billed against.</p>
+        </div>
+        <Button onClick={openCreate}><Plus size={16} /> Add Vendor</Button>
+      </div>
+
+      {showForm && (
+        <Card className="relative max-w-2xl">
+          <button onClick={() => setShowForm(false)} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
+          <h2 className="font-display font-semibold text-lg mb-4">{editingId != null ? "Edit Vendor" : "New Vendor"}</h2>
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Vendor Code" required value={form.vendor_code} onChange={(e) => setForm((s) => ({ ...s, vendor_code: e.target.value }))} />
+              <Input label="Vendor Name" required value={form.vendor_name} onChange={(e) => setForm((s) => ({ ...s, vendor_name: e.target.value }))} />
+              <Input label="Location" value={form.location} onChange={(e) => setForm((s) => ({ ...s, location: e.target.value }))} />
+              <Input label="GSTIN" value={form.gstin} onChange={(e) => setForm((s) => ({ ...s, gstin: e.target.value }))} />
+              <Input label="Phone" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} />
+              <Input label="Email" type="email" value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} />
+            </div>
+            <div>
+              <span className="block text-xs font-medium text-ink/60 mb-1.5">Projects (leave empty to allow every project)</span>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto border border-ink/10 rounded-md p-3">
+                {projects.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.project_ids.includes(p.id)}
+                      onChange={(e) =>
+                        setForm((s) => ({
+                          ...s,
+                          project_ids: e.target.checked ? [...s.project_ids, p.id] : s.project_ids.filter((id) => id !== p.id),
+                        }))
+                      }
+                    />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
+            <Button type="submit" disabled={busy}>{busy ? "Saving…" : editingId != null ? "Save Changes" : "Save"}</Button>
+          </form>
+        </Card>
+      )}
+
+      <Card>
+        <Table
+          columns={[
+            { key: "vendor_code", header: "Code" },
+            { key: "vendor_name", header: "Name", render: (row) => vendorLabel(row) },
+            { key: "location", header: "Location" },
+            { key: "gstin", header: "GSTIN" }, { key: "phone", header: "Phone" },
+            { key: "projects", header: "Projects", render: (r) => <span className="text-xs">{projectNames(r.project_ids)}</span> },
+            {
+              key: "__edit", header: "",
+              render: (r) => (
+                <button type="button" onClick={() => openEdit(r)} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
+                  <Pencil size={12} /> Edit
+                </button>
+              ),
+            },
+          ]}
+          rows={vendors}
+        />
+      </Card>
+    </div>
   );
 }
 

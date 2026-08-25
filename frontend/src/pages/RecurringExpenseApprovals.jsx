@@ -12,6 +12,7 @@ export default function RecurringExpenseApprovals() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [amounts, setAmounts] = useState({});
+  const [billNumbers, setBillNumbers] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -22,8 +23,10 @@ export default function RecurringExpenseApprovals() {
     setError("");
     try {
       const amt = amounts[row.id];
+      const billNo = billNumbers[row.id];
       await client.post(`/recurring-expenses/instances/${row.id}/accounts-review`, {
         amount: amt !== undefined && amt !== "" ? Number(amt) : null,
+        bill_number: billNo !== undefined ? (billNo || null) : null,
       });
       load();
     } catch (err) {
@@ -54,10 +57,11 @@ export default function RecurringExpenseApprovals() {
   }
 
   const payeeName = (row) => {
-    if (row.vendor_id) return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id));
-    if (row.employee_id) return masters.employees.find((e) => e.id === row.employee_id)?.employee_name;
-    return "—";
+    if (row.payee_type === "VENDOR") return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id)) || "—";
+    if (row.payee_type === "EMPLOYEE") return masters.employees.find((e) => e.id === row.employee_id)?.employee_name || "—";
+    return row.supplier_name || "—";
   };
+  const projectName = (row) => masters.projects.find((p) => p.id === row.project_id)?.name || "—";
 
   if (masters.loading) return null;
 
@@ -91,17 +95,24 @@ export default function RecurringExpenseApprovals() {
                       {row.amount_type === "OPEN" && <span className="text-[11px] text-ink/40 italic">Open Amount</span>}
                     </div>
                     <div className="text-xs text-ink/50 mb-2">
-                      Bill date {row.occurrence_date}{row.due_date ? ` · Due ${row.due_date}` : ""} · Payee: {payeeName(row)}
+                      Bill date {row.occurrence_date}{row.due_date ? ` · Due ${row.due_date}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}
                     </div>
                     {needsAccounts ? (
-                      <div className="max-w-xs">
+                      <div className="flex gap-3 max-w-md">
                         <Input label={row.amount_type === "OPEN" ? "Enter Bill Amount" : "Amount (correct if changed)"}
                           type="number" step="0.01"
                           defaultValue={row.amount ?? ""}
                           onChange={(e) => setAmounts((s) => ({ ...s, [row.id]: e.target.value }))} />
+                        <Input label="Voucher / Bill No"
+                          defaultValue={row.bill_number ?? ""}
+                          placeholder="e.g. from the physical bill"
+                          onChange={(e) => setBillNumbers((s) => ({ ...s, [row.id]: e.target.value }))} />
                       </div>
                     ) : (
-                      <div className="text-sm font-medium">{formatMoney(row.amount)}</div>
+                      <div className="text-sm">
+                        <span className="font-medium">{formatMoney(row.amount)}</span>
+                        {row.bill_number && <span className="text-ink/50"> · Voucher/Bill No: {row.bill_number}</span>}
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">

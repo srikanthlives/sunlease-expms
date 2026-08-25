@@ -161,6 +161,33 @@ class Vendor(Base):
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 
+    project_links = relationship("VendorProject", foreign_keys="VendorProject.vendor_id")
+
+    @property
+    def project_ids(self):
+        return [link.project_id for link in self.project_links]
+
+
+class VendorProject(Base):
+    """Many-to-many: which projects a vendor belongs to. A vendor tied to no
+    project is a general/universal vendor, visible regardless of project.
+    Otherwise expense/invoice vendor pickers only offer vendors linked to the
+    project in hand, and an ACCOUNTS user (project-scoped, see
+    project_scope_service) only ever sees vendors reachable from a project
+    they're assigned to."""
+
+    __tablename__ = "vendor_projects"
+
+    id = Column(Integer, primary_key=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+    vendor = relationship("Vendor", foreign_keys=[vendor_id], overlaps="project_links")
+    project = relationship("Project", foreign_keys=[project_id])
+
+    __table_args__ = (UniqueConstraint("vendor_id", "project_id", name="uq_vendor_project"),)
+
 
 class Account(Base):
     __tablename__ = "accounts"
@@ -441,7 +468,19 @@ class RecurringExpense(Base):
     # Bill due date = occurrence_date + due_in_days. Null = no due date tracked.
     due_in_days = Column(Integer, nullable=True)
 
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    # Who the bill is paid to - mirrors Expense's source_type distinction:
+    # DIRECT (no vendor master record, free-text payee), VENDOR (vendor
+    # master) or EMPLOYEE (reimbursement-style, e.g. guesthouse rent paid by
+    # an employee). Exactly one of vendor_id/employee_id/supplier_name is set,
+    # matching payee_type.
+    payee_type = Column(String(10), nullable=False, default="DIRECT")  # RecurringPayeeType
+    supplier_name = Column(String(255), nullable=True)  # used when payee_type=DIRECT
+    # No bill/voucher number here - it isn't known until an actual bill
+    # arrives, so it's captured per-instance by Accounts at review time
+    # instead (see RecurringExpenseInstance.bill_number).
+
+    # Every recurring expense must be tied to a project.
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
     category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=False)
@@ -478,6 +517,10 @@ class RecurringExpenseInstance(Base):
     # Pre-filled with the template's fixed_amount for FIXED; null (Accounts
     # must fill it in) for OPEN.
     amount = Column(Numeric(14, 2), nullable=True)
+    # Voucher/bill number off the actual physical bill - unknowable at
+    # template-creation time (the bill hasn't arrived yet), so Accounts
+    # enters it here at review time, right before sending to Admin.
+    bill_number = Column(String(100), nullable=True)
     description = Column(Text)
 
     status = Column(String(30), nullable=False, default="PENDING_ACCOUNTS_REVIEW")  # RecurringInstanceStatus

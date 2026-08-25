@@ -13,10 +13,17 @@ const FREQUENCIES = [
   { value: "ANNUALLY", label: "Annually" },
 ];
 
+const PAYEE_TYPES = [
+  { value: "DIRECT", label: "Direct Expense" },
+  { value: "VENDOR", label: "Vendor Expense" },
+  { value: "EMPLOYEE", label: "Employee Expense" },
+];
+
 function emptyForm() {
   return {
     name: "", frequency: "MONTHLY", amount_type: "FIXED", fixed_amount: "",
-    lead_days: 7, due_in_days: "", project_id: "", vendor_id: "", employee_id: "",
+    lead_days: 7, due_in_days: "", payee_type: "DIRECT", supplier_name: "",
+    project_id: "", vendor_id: "", employee_id: "",
     category_id: "", sub_category_id: "", description: "", next_occurrence_date: "", is_active: true,
   };
 }
@@ -26,6 +33,7 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
     ...editing,
     fixed_amount: editing.fixed_amount ?? "",
     due_in_days: editing.due_in_days ?? "",
+    supplier_name: editing.supplier_name ?? "",
     project_id: editing.project_id ?? "", vendor_id: editing.vendor_id ?? "", employee_id: editing.employee_id ?? "",
     sub_category_id: editing.sub_category_id ?? "",
   } : emptyForm());
@@ -48,9 +56,11 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
         fixed_amount: form.amount_type === "FIXED" ? Number(form.fixed_amount) : null,
         lead_days: Number(form.lead_days),
         due_in_days: form.due_in_days === "" ? null : Number(form.due_in_days),
-        project_id: form.project_id || null,
-        vendor_id: form.vendor_id || null,
-        employee_id: form.employee_id || null,
+        payee_type: form.payee_type,
+        supplier_name: form.payee_type === "DIRECT" ? form.supplier_name : null,
+        project_id: Number(form.project_id),
+        vendor_id: form.payee_type === "VENDOR" ? Number(form.vendor_id) : null,
+        employee_id: form.payee_type === "EMPLOYEE" ? Number(form.employee_id) : null,
         category_id: Number(form.category_id),
         sub_category_id: form.sub_category_id || null,
         description: form.description || null,
@@ -98,19 +108,34 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
 
           <Input label="Bill Due In (days after bill date, optional)" type="number" min="0"
             value={form.due_in_days} onChange={(e) => set("due_in_days", e.target.value)} />
-          <Select label="Project" value={form.project_id} onChange={(e) => set("project_id", e.target.value)}>
-            <option value="">— None —</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.code} — {p.name}</option>)}
+          <Select label="Project" required value={form.project_id} onChange={(e) => set("project_id", e.target.value)}>
+            <option value="">— Select —</option>
+            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
 
-          <Select label="Vendor (if paid to a vendor)" value={form.vendor_id} onChange={(e) => set("vendor_id", e.target.value)}>
-            <option value="">— None —</option>
-            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
+          <Select label="Expense Type" value={form.payee_type} onChange={(e) => set("payee_type", e.target.value)}>
+            {PAYEE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </Select>
-          <Select label="Employee (if paid to an employee)" value={form.employee_id} onChange={(e) => set("employee_id", e.target.value)}>
-            <option value="">— None —</option>
-            {masters.employees.map((e) => <option key={e.id} value={e.id}>{e.employee_name}</option>)}
-          </Select>
+          <div />
+
+          {form.payee_type === "DIRECT" && (
+            <Input label="Supplier / Payee Name" required value={form.supplier_name}
+              onChange={(e) => set("supplier_name", e.target.value)} />
+          )}
+          {form.payee_type === "VENDOR" && (
+            <Select label="Vendor" required value={form.vendor_id} onChange={(e) => set("vendor_id", e.target.value)}>
+              <option value="">— Select —</option>
+              {masters.vendors
+                .filter((v) => !form.project_id || !v.project_ids?.length || v.project_ids.includes(Number(form.project_id)))
+                .map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
+            </Select>
+          )}
+          {form.payee_type === "EMPLOYEE" && (
+            <Select label="Employee" required value={form.employee_id} onChange={(e) => set("employee_id", e.target.value)}>
+              <option value="">— Select —</option>
+              {masters.employees.map((e) => <option key={e.id} value={e.id}>{e.employee_name}</option>)}
+            </Select>
+          )}
 
           <Select label="Expense Category" required value={form.category_id}
             onChange={(e) => set("category_id", e.target.value)}>
@@ -145,10 +170,11 @@ function TemplatesTab({ masters }) {
   }
 
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
+  const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
   const payeeName = (row) => {
-    if (row.vendor_id) return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id));
-    if (row.employee_id) return masters.employees.find((e) => e.id === row.employee_id)?.employee_name;
-    return "—";
+    if (row.payee_type === "VENDOR") return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id)) || "—";
+    if (row.payee_type === "EMPLOYEE") return masters.employees.find((e) => e.id === row.employee_id)?.employee_name || "—";
+    return row.supplier_name || "—";
   };
 
   const columns = [
@@ -156,6 +182,7 @@ function TemplatesTab({ masters }) {
     { key: "frequency", header: "Frequency", render: (r) => FREQUENCIES.find((f) => f.value === r.frequency)?.label || r.frequency },
     { key: "amount_type", header: "Amount", render: (r) => r.amount_type === "FIXED" ? formatMoney(r.fixed_amount) : <span className="text-ink/50 italic">Open</span> },
     { key: "payee", header: "Payee", render: payeeName },
+    { key: "project_id", header: "Project", render: (r) => projectName(r.project_id) },
     { key: "category_id", header: "Category", render: (r) => categoryName(r.category_id) },
     { key: "next_occurrence_date", header: "Next Bill Date" },
     { key: "is_active", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },

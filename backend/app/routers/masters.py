@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Project, ProjectAccountsUser, Employee, Vendor, ExpenseCategory, ExpenseSubCategory, Account, User
+from app.models.models import Project, ProjectAccountsUser, Employee, Vendor, VendorProject, ExpenseCategory, ExpenseSubCategory, Account, User
 from app.schemas.masters import (
     ProjectCreate, ProjectOut, AssignApproverRequest, AssignAccountsUsersRequest, EmployeeCreate, EmployeeOut, EmployeeDetailOut, VendorCreate, VendorOut,
     CategoryCreate, CategoryOut, SubCategoryCreate, SubCategoryOut, AccountCreate, AccountOut,
@@ -161,20 +162,56 @@ def update_employee(employee_id: int, payload: EmployeeCreate, db: Session = Dep
 
 
 # Vendors
+def _set_vendor_projects(db: Session, vendor: Vendor, project_ids: list[int]):
+    project_ids = set(project_ids)
+    if project_ids:
+        found = db.query(Project.id).filter(Project.id.in_(project_ids)).count()
+        if found != len(project_ids):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more projects not found")
+    db.query(VendorProject).filter(VendorProject.vendor_id == vendor.id).delete()
+    for pid in project_ids:
+        db.add(VendorProject(vendor_id=vendor.id, project_id=pid))
+
+
 @router.post("/vendors", response_model=VendorOut, dependencies=[Depends(require_admin)])
 def create_vendor(payload: VendorCreate, db: Session = Depends(get_db)):
     if db.query(Vendor).filter(Vendor.vendor_code == payload.vendor_code).first():
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vendor code already exists")
-    v = Vendor(**payload.model_dump())
+    data = payload.model_dump()
+    project_ids = data.pop("project_ids")
+    v = Vendor(**data)
     db.add(v)
+    db.flush()
+    _set_vendor_projects(db, v, project_ids)
     db.commit()
     db.refresh(v)
     return v
 
 
 @router.get("/vendors", response_model=list[VendorOut])
-def list_vendors(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(Vendor).order_by(Vendor.vendor_name).all()
+def list_vendors(db: Session = Depends(get_db), user: User = Depends(get_current_user), project_id: int | None = None):
+    """Vendors with no project links are general/universal - always visible.
+    Otherwise: a project_id filter narrows to vendors linked to that project;
+    an ACCOUNTS user with no project_id filter is narrowed to vendors
+    reachable from any project they're assigned to (mirrors how they're
+    scoped everywhere else - see project_scope_service)."""
+    q = db.query(Vendor)
+    has_links = Vendor.project_links.any()
+
+    if project_id is not None:
+        if user.role.name == RoleName.ACCOUNTS:
+            assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+            if project_id not in assigned:
+                return []
+        q = q.filter(or_(Vendor.project_links.any(VendorProject.project_id == project_id), ~has_links))
+    elif user.role.name == RoleName.ACCOUNTS:
+        assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+        if assigned:
+            q = q.filter(or_(Vendor.project_links.any(VendorProject.project_id.in_(assigned)), ~has_links))
+        else:
+            q = q.filter(~has_links)
+
+    return q.order_by(Vendor.vendor_name).distinct().all()
 
 
 @router.put("/vendors/{vendor_id}", response_model=VendorOut, dependencies=[Depends(require_admin)])
@@ -185,9 +222,12 @@ def update_vendor(vendor_id: int, payload: VendorCreate, db: Session = Depends(g
     dupe = db.query(Vendor).filter(Vendor.vendor_code == payload.vendor_code, Vendor.id != vendor_id).first()
     if dupe:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Vendor code already exists")
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    project_ids = data.pop("project_ids")
+    for field, value in data.items():
         setattr(vendor, field, value)
     db.add(vendor)
+    _set_vendor_projects(db, vendor, project_ids)
     db.commit()
     db.refresh(vendor)
     return vendor

@@ -111,6 +111,14 @@ class RecurringAmountType:
     ALL = [FIXED, OPEN]
 
 
+class RecurringPayeeType:
+    DIRECT = "DIRECT"      # free-text payee, no vendor/employee master record
+    VENDOR = "VENDOR"
+    EMPLOYEE = "EMPLOYEE"
+
+    ALL = [DIRECT, VENDOR, EMPLOYEE]
+
+
 class RecurringInstanceStatus:
     # Awaiting Accounts: for OPEN amount type they must fill in the actual
     # bill amount; for FIXED they may correct it if the bill changed. Either

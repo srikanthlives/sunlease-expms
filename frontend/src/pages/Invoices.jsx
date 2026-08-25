@@ -84,6 +84,14 @@ function InvoiceForm({ masters, onClose, onCreated }) {
 
   const total = ["taxable_amount", "cgst", "sgst", "igst", "other_tax"].reduce((s, k) => s + Number(form[k] || 0), 0);
 
+  // Only offer vendors that can bill against the selected project - a
+  // vendor with no project links at all is general/universal and always
+  // shown. No project selected yet -> show every vendor the user can see
+  // (already scoped server-side for ACCOUNTS - see project_scope_service).
+  const availableVendors = form.project_id
+    ? masters.vendors.filter((v) => !v.project_ids?.length || v.project_ids.includes(Number(form.project_id)))
+    : masters.vendors;
+
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
@@ -114,17 +122,17 @@ function InvoiceForm({ masters, onClose, onCreated }) {
       <h2 className="font-display font-semibold text-lg mb-4">New Supplier Invoice</h2>
       <form onSubmit={submit} className="space-y-4 max-w-2xl">
         <div className="grid grid-cols-2 gap-4">
+          <Select label="Project" value={form.project_id} onChange={(e) => { set("project_id", e.target.value); set("vendor_id", ""); }}>
+            <option value="">— none —</option>
+            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
           <Select label="Vendor" value={form.vendor_id} onChange={(e) => set("vendor_id", e.target.value)} required>
             <option value="">Select…</option>
-            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
+            {availableVendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
           </Select>
           <Input label="Invoice Number" value={form.invoice_number} onChange={(e) => set("invoice_number", e.target.value)} required />
           <Input label="Invoice Date" type="date" value={form.invoice_date} onChange={(e) => set("invoice_date", e.target.value)} required />
           <Input label="Due Date" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
-          <Select label="Project" value={form.project_id} onChange={(e) => set("project_id", e.target.value)}>
-            <option value="">— none —</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
           <Select label="Expense Head" value={form.category_id} onChange={(e) => { set("category_id", e.target.value); set("sub_category_id", ""); }} required>
             <option value="">Select…</option>
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

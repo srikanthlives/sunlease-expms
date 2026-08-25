@@ -75,10 +75,13 @@ def _assert_admin_reviewer(user: User):
 
 
 def accounts_review(
-    db: Session, instance: RecurringExpenseInstance, actor: User, amount: Decimal | None, remarks: str | None = None,
+    db: Session, instance: RecurringExpenseInstance, actor: User, amount: Decimal | None,
+    bill_number: str | None = None, remarks: str | None = None,
 ) -> RecurringExpenseInstance:
     """Accounts fills in (OPEN type) or corrects (FIXED type) the actual bill
-    amount and sends it on to Admin for final approval."""
+    amount, records the voucher/bill number off the physical bill (not known
+    until now, since the recurring template is set up ahead of any actual
+    bill arriving), and sends it on to Admin for final approval."""
     if instance.status != RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This instance is not awaiting Accounts review")
     _assert_accounts_reviewer(actor)
@@ -86,13 +89,15 @@ def accounts_review(
         instance.amount = amount
     if instance.amount is None or instance.amount <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "An amount is required before this can go to Admin for approval")
+    if bill_number is not None:
+        instance.bill_number = bill_number
     instance.status = RecurringInstanceStatus.PENDING_ADMIN_APPROVAL
     instance.accounts_reviewed_by = actor.id
     instance.accounts_reviewed_at = dt.datetime.utcnow()
     db.add(instance)
     audit_service.record(
         db, "RECURRING_EXPENSE_INSTANCE", instance.id, AuditAction.APPROVE, actor.id,
-        {"stage": "accounts", "amount": str(instance.amount), "remarks": remarks},
+        {"stage": "accounts", "amount": str(instance.amount), "bill_number": instance.bill_number, "remarks": remarks},
     )
     return instance
 
@@ -110,7 +115,7 @@ def admin_approve(db: Session, instance: RecurringExpenseInstance, actor: User) 
         category_id=tpl.category_id, sub_category_id=tpl.sub_category_id,
         description=instance.description or tpl.description or tpl.name,
         base_amount=instance.amount, gst_amount=Decimal("0"), other_amount=Decimal("0"),
-        created_by=actor.id,
+        created_by=actor.id, supplier_name=tpl.supplier_name, bill_number=instance.bill_number,
     )
     instance.status = RecurringInstanceStatus.APPROVED
     instance.admin_reviewed_by = actor.id

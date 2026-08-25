@@ -76,11 +76,15 @@ class VendorCreate(VendorBase):
     bank_name: str | None = None
     account_number: str | None = None
     ifsc: str | None = None
+    # Which projects this vendor belongs to. Empty = general/universal
+    # vendor, visible regardless of project.
+    project_ids: list[int] = []
 
 
 class VendorOut(VendorBase):
     id: int
     is_active: bool
+    project_ids: list[int] = []
 
     class Config:
         from_attributes = True

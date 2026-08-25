@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_accounts, require_admin
 from app.db.session import get_db
-from app.models.enums import RecurringAmountType, RecurringInstanceStatus, RoleName
+from app.models.enums import RecurringAmountType, RecurringInstanceStatus, RecurringPayeeType, RoleName
 from app.models.models import RecurringExpense, RecurringExpenseInstance, User
 from app.schemas.recurring_expenses import (
     InstanceRejectRequest, InstanceReviewRequest, RecurringExpenseCreate, RecurringExpenseInstanceOut, RecurringExpenseOut,
@@ -21,8 +21,9 @@ def _instance_to_out(i: RecurringExpenseInstance) -> RecurringExpenseInstanceOut
     tpl = i.recurring_expense
     return RecurringExpenseInstanceOut(
         id=i.id, recurring_expense_id=i.recurring_expense_id, recurring_expense_name=tpl.name if tpl else None,
-        occurrence_date=i.occurrence_date, due_date=i.due_date, amount=i.amount, description=i.description,
+        occurrence_date=i.occurrence_date, due_date=i.due_date, amount=i.amount, bill_number=i.bill_number, description=i.description,
         status=i.status, amount_type=tpl.amount_type if tpl else None,
+        payee_type=tpl.payee_type if tpl else None, supplier_name=tpl.supplier_name if tpl else None,
         project_id=tpl.project_id if tpl else None, vendor_id=tpl.vendor_id if tpl else None,
         employee_id=tpl.employee_id if tpl else None, category_id=tpl.category_id if tpl else None,
         sub_category_id=tpl.sub_category_id if tpl else None,
@@ -46,6 +47,8 @@ def create_recurring_expense(payload: RecurringExpenseCreate, db: Session = Depe
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid frequency")
     if payload.amount_type not in RecurringAmountType.ALL:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid amount_type")
+    if payload.payee_type not in RecurringPayeeType.ALL:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payee_type")
     tpl = RecurringExpense(**payload.model_dump(), created_by=user.id)
     db.add(tpl)
     db.commit()
@@ -80,6 +83,8 @@ def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, 
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid frequency")
     if payload.amount_type not in RecurringAmountType.ALL:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid amount_type")
+    if payload.payee_type not in RecurringPayeeType.ALL:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payee_type")
     for field, value in payload.model_dump().items():
         setattr(tpl, field, value)
     db.add(tpl)
@@ -149,7 +154,7 @@ def review_instance(instance_id: int, payload: InstanceReviewRequest, db: Sessio
     instance = db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.id == instance_id).first()
     if not instance:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
-    recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.remarks)
+    recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.bill_number, payload.remarks)
     db.commit()
     db.refresh(instance)
     return _instance_to_out(instance)
