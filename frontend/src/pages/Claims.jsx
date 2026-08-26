@@ -72,6 +72,7 @@ export function ClaimDetail() {
   const [error, setError] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
   const navigate = useNavigate();
 
   function load() { client.get(`/claims/${id}`).then((res) => setClaim(res.data)); }
@@ -105,6 +106,17 @@ export function ClaimDetail() {
     }
   }
 
+  async function deleteClaim() {
+    if (!window.confirm(`Delete claim ${claim.claim_number}? This cannot be undone.`)) return;
+    setError("");
+    try {
+      await client.delete(`/claims/${id}`);
+      navigate("/claims");
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       <Link to="/claims" className="text-sm text-brand-600 hover:underline">← Back to claims</Link>
@@ -127,9 +139,15 @@ export function ClaimDetail() {
       )}
 
       <div className="flex justify-end">
-        <Attachments documentType="CLAIM" claimId={claim.id} label="Overall Claim Attachments" />
+        <Attachments documentType="CLAIM" claimId={claim.id} label="Overall Claim Attachments" readOnly={!canEdit} />
       </div>
 
+      {showEdit ? (
+        <ClaimForm
+          masters={masters} defaultEmployeeId={claim.employee_id} editingClaim={claim}
+          onClose={() => setShowEdit(false)} onCreated={() => { setShowEdit(false); load(); }}
+        />
+      ) : (
       <Card>
         <Table
           columns={[
@@ -138,7 +156,7 @@ export function ClaimDetail() {
             { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
             {
               key: "proof", header: "Proof",
-              render: (r) => <Attachments documentType="CLAIM_LINE" claimLineId={r.id} compact label="Screenshot / Proof" />,
+              render: (r) => <Attachments documentType="CLAIM_LINE" claimLineId={r.id} compact label="Screenshot / Proof" readOnly={!canEdit} />,
             },
           ]}
           rows={claim.lines}
@@ -147,6 +165,7 @@ export function ClaimDetail() {
           Total: <span className="tabular font-semibold text-lg ml-1">{formatMoney(claim.total_amount)}</span>
         </div>
       </Card>
+      )}
 
       {claim.status === "REJECTED" && claim.rejection_reason && (
         <Card className="border-danger/30 bg-danger/5">
@@ -158,8 +177,12 @@ export function ClaimDetail() {
       {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
 
       <div className="flex gap-2 flex-wrap">
-        {canEdit && (
-          <Button onClick={() => act("submit")}>Submit Claim</Button>
+        {canEdit && !showEdit && (
+          <>
+            <Button onClick={() => act("submit")}>Submit Claim</Button>
+            <Button variant="outline" onClick={() => setShowEdit(true)}>Edit Claim</Button>
+            <Button variant="danger" onClick={deleteClaim}>Delete Claim</Button>
+          </>
         )}
         {canAct && (
           <>
@@ -183,12 +206,19 @@ export function ClaimDetail() {
   );
 }
 
-function ClaimForm({ masters, defaultEmployeeId, onClose, onCreated }) {
-  const [employeeId, setEmployeeId] = useState(defaultEmployeeId || "");
-  const [projectId, setProjectId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [description, setDescription] = useState("");
-  const [lines, setLines] = useState([{ expense_date: new Date().toISOString().slice(0, 10), expense_head_id: "", expense_sub_head_id: "", description: "", amount: "" }]);
+function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreated }) {
+  const [employeeId, setEmployeeId] = useState(editingClaim?.employee_id || defaultEmployeeId || "");
+  const [projectId, setProjectId] = useState(editingClaim?.project_id || "");
+  const [categoryId, setCategoryId] = useState(editingClaim?.category_id || "");
+  const [description, setDescription] = useState(editingClaim?.description || "");
+  const [lines, setLines] = useState(
+    editingClaim?.lines?.length
+      ? editingClaim.lines.map((l) => ({
+          expense_date: l.expense_date, expense_head_id: l.expense_head_id,
+          expense_sub_head_id: l.expense_sub_head_id || "", description: l.description || "", amount: l.amount,
+        }))
+      : [{ expense_date: new Date().toISOString().slice(0, 10), expense_head_id: "", expense_sub_head_id: "", description: "", amount: "" }]
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -209,13 +239,18 @@ function ClaimForm({ masters, defaultEmployeeId, onClose, onCreated }) {
     setBusy(true);
     setError("");
     try {
-      await client.post("/claims", {
+      const body = {
         employee_id: Number(employeeId),
         project_id: projectId || null,
         category_id: Number(categoryId),
         description,
         lines: lines.map((l) => ({ ...l, expense_head_id: Number(l.expense_head_id), expense_sub_head_id: l.expense_sub_head_id || null, amount: Number(l.amount) })),
-      });
+      };
+      if (editingClaim) {
+        await client.put(`/claims/${editingClaim.id}`, body);
+      } else {
+        await client.post("/claims", body);
+      }
       onCreated();
     } catch (err) {
       setError(apiErrorMessage(err));
@@ -227,10 +262,10 @@ function ClaimForm({ masters, defaultEmployeeId, onClose, onCreated }) {
   return (
     <Card className="relative">
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
-      <h2 className="font-display font-semibold text-lg mb-4">New Employee Claim</h2>
+      <h2 className="font-display font-semibold text-lg mb-4">{editingClaim ? `Edit Claim ${editingClaim.claim_number}` : "New Employee Claim"}</h2>
       <form onSubmit={submit} className="space-y-4 max-w-3xl">
         <div className="grid grid-cols-2 gap-4">
-          <Select label="Employee" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required disabled={!!defaultEmployeeId}>
+          <Select label="Employee" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required disabled={!!defaultEmployeeId || !!editingClaim}>
             <option value="">Select…</option>
             {masters.employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.employee_name}</option>)}
           </Select>
@@ -279,7 +314,7 @@ function ClaimForm({ masters, defaultEmployeeId, onClose, onCreated }) {
 
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save Draft"}</Button>
+          <Button type="submit" disabled={busy}>{busy ? "Saving…" : editingClaim ? "Save Changes" : "Save Draft"}</Button>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </form>

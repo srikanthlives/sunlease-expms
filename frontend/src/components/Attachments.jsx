@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import client, { BASE_URL, apiErrorMessage } from "../api/client";
 import { Button } from "./ui";
-import { Paperclip, X, Upload, Eye, FileText, Loader2 } from "lucide-react";
+import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2 } from "lucide-react";
 
 /**
  * Attach & preview documents (invoices/bills, payment receipts, employee
@@ -10,7 +10,7 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2 } from "lucide-react";
  */
 export default function Attachments({
   documentType, expenseId, invoiceId, paymentId, claimId, claimLineId,
-  label = "Attachments", compact = false,
+  label = "Attachments", compact = false, readOnly = false,
 }) {
   const [open, setOpen] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -50,6 +50,17 @@ export default function Attachments({
   function clearPendingFile() {
     setPendingFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function deleteDoc(doc) {
+    if (!window.confirm(`Remove "${doc.original_filename}"?`)) return;
+    setError("");
+    try {
+      await client.delete(`/documents/${doc.id}`);
+      load();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   }
 
   async function confirmUpload() {
@@ -107,6 +118,11 @@ export default function Attachments({
                     <button type="button" onClick={() => setPreviewDoc(d)} className="text-brand-700 hover:text-brand-900 shrink-0" title="Preview">
                       <Eye size={16} />
                     </button>
+                    {!readOnly && (
+                      <button type="button" onClick={() => deleteDoc(d)} className="text-ink/30 hover:text-danger shrink-0" title="Remove">
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -114,7 +130,7 @@ export default function Attachments({
 
             {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2 mb-3">{error}</div>}
 
-            {pendingFile ? (
+            {readOnly ? null : pendingFile ? (
               <div className="border border-brand-200 bg-brand-50 rounded-md p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <FileText size={15} className="text-brand-700 shrink-0" />

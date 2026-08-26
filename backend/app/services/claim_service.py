@@ -4,9 +4,10 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import EmployeeClaim, EmployeeClaimLine, User
+from app.models.models import EmployeeClaim, EmployeeClaimLine, Document, User
 from app.models.enums import ClaimStatus, SourceType, AuditAction, RoleName
 from app.services import numbering, audit_service, expense_service, project_scope_service
+from app.services.storage import get_storage
 
 
 def create_draft_claim(db: Session, *, employee_id: int, project_id, category_id, description, lines: list[dict], created_by: int) -> EmployeeClaim:
@@ -36,6 +37,27 @@ def update_draft_claim(db: Session, claim: EmployeeClaim, *, project_id, categor
     _replace_lines(db, claim, lines)
     audit_service.record(db, "CLAIM", claim.id, AuditAction.UPDATE, actor_id, {"line_count": len(lines)})
     return claim
+
+
+def delete_claim(db: Session, claim: EmployeeClaim, actor_id: int):
+    """Employees may throw away a claim entirely while it's still theirs to
+    change - same window as edit (DRAFT or REJECTED). Once submitted it's
+    in someone else's hands and can no longer be pulled back this way. Hard
+    delete (not the CANCELLED-status pattern used for financial records) is
+    correct here since no Expense has been created yet at this stage - there
+    is nothing downstream to preserve an audit trail against."""
+    if claim.status not in (ClaimStatus.DRAFT, ClaimStatus.REJECTED):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only draft or rejected claims can be deleted")
+    line_ids = [line.id for line in claim.lines]
+    docs = db.query(Document).filter(
+        (Document.claim_id == claim.id) | (Document.claim_line_id.in_(line_ids) if line_ids else False)
+    ).all()
+    storage = get_storage()
+    for doc in docs:
+        storage.delete_file(doc.stored_filename)
+        db.delete(doc)
+    audit_service.record(db, "CLAIM", claim.id, AuditAction.DELETE, actor_id, {"claim_number": claim.claim_number})
+    db.delete(claim)
 
 
 def _replace_lines(db: Session, claim: EmployeeClaim, lines: list[dict]):

@@ -147,6 +147,17 @@ def update_claim(claim_id: int, payload: ClaimUpdate, db: Session = Depends(get_
     return c
 
 
+@router.delete("/{claim_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_claim(claim_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    c = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_id).first()
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
+    if not _can_edit(c, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You may only delete your own claims")
+    claim_service.delete_claim(db, c, user.id)
+    db.commit()
+
+
 @router.post("/{claim_id}/submit", response_model=ClaimOut)
 def submit_claim(claim_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     c = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_id).first()
