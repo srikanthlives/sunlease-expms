@@ -259,19 +259,24 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
     }
   }
 
+  const selectedEmployee = masters.employees.find((emp) => emp.id === Number(employeeId));
+  const allowedProjects = selectedEmployee?.project_ids?.length
+    ? masters.projects.filter((p) => selectedEmployee.project_ids.includes(p.id))
+    : masters.projects;
+
   return (
     <Card className="relative">
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
       <h2 className="font-display font-semibold text-lg mb-4">{editingClaim ? `Edit Claim ${editingClaim.claim_number}` : "New Employee Claim"}</h2>
       <form onSubmit={submit} className="space-y-4 w-full">
         <div className="grid grid-cols-2 gap-4">
-          <Select label="Employee" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} required disabled={!!defaultEmployeeId || !!editingClaim}>
+          <Select label="Employee" value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setProjectId(""); }} required disabled={!!defaultEmployeeId || !!editingClaim}>
             <option value="">Select…</option>
             {masters.employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.employee_name}</option>)}
           </Select>
           <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
             <option value="">— none —</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {allowedProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
           <Select label="Overall Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
             <option value="">Select…</option>

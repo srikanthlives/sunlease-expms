@@ -44,8 +44,8 @@ def _assert_claim_project_allowed(db: Session, user: User, employee_id: int, pro
     if user.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN) or project_id is None:
         return
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
-    if not employee or employee.project_id != project_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You can only submit claims against your own project")
+    if not employee or project_id not in employee.project_ids:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You can only submit claims against a project you belong to")
 
 
 @router.post("", response_model=ClaimOut)

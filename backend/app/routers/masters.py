@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Project, ProjectAccountsUser, Employee, Vendor, VendorProject, ExpenseCategory, ExpenseSubCategory, Account, User
+from app.models.models import Project, ProjectAccountsUser, Employee, EmployeeProject, Vendor, VendorProject, ExpenseCategory, ExpenseSubCategory, Account, User
 from app.schemas.masters import (
     ProjectCreate, ProjectOut, AssignApproverRequest, AssignAccountsUsersRequest, EmployeeCreate, EmployeeOut, EmployeeDetailOut, VendorCreate, VendorOut,
     CategoryCreate, CategoryOut, SubCategoryCreate, SubCategoryOut, AccountCreate, AccountOut,
@@ -106,6 +106,17 @@ def assign_project_accounts_users(project_id: int, payload: AssignAccountsUsersR
 
 
 # Employees
+def _set_employee_projects(db: Session, employee: Employee, project_ids: list[int]):
+    project_ids = set(project_ids)
+    if project_ids:
+        found = db.query(Project.id).filter(Project.id.in_(project_ids)).count()
+        if found != len(project_ids):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more projects not found")
+    db.query(EmployeeProject).filter(EmployeeProject.employee_id == employee.id).delete()
+    for pid in project_ids:
+        db.add(EmployeeProject(employee_id=employee.id, project_id=pid))
+
+
 @router.post("/employees", response_model=EmployeeOut, dependencies=[Depends(require_admin)])
 def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
     if db.query(Employee).filter(Employee.employee_code == payload.employee_code).first():
@@ -114,8 +125,12 @@ def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db)):
         manager = db.query(Employee).filter(Employee.id == payload.manager_id).first()
         if not manager:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Manager not found")
-    e = Employee(**payload.model_dump())
+    data = payload.model_dump()
+    project_ids = data.pop("project_ids")
+    e = Employee(**data)
     db.add(e)
+    db.flush()
+    _set_employee_projects(db, e, project_ids)
     db.commit()
     db.refresh(e)
     return e
@@ -153,9 +168,12 @@ def update_employee(employee_id: int, payload: EmployeeCreate, db: Session = Dep
         manager = db.query(Employee).filter(Employee.id == payload.manager_id).first()
         if not manager:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Manager not found")
-    for field, value in payload.model_dump().items():
+    data = payload.model_dump()
+    project_ids = data.pop("project_ids")
+    for field, value in data.items():
         setattr(employee, field, value)
     db.add(employee)
+    _set_employee_projects(db, employee, project_ids)
     db.commit()
     db.refresh(employee)
     return employee

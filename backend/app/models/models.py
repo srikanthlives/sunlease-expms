@@ -101,7 +101,6 @@ class Employee(Base):
     employee_name = Column(String(255), nullable=False)
     designation = Column(String(150))
     department = Column(String(150))
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     manager_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
     email = Column(String(255))
     phone = Column(String(50))
@@ -113,9 +112,32 @@ class Employee(Base):
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 
-    project = relationship("Project", foreign_keys=[project_id])
     manager = relationship("Employee", remote_side=[id])
     user = relationship("User", back_populates="employee", uselist=False, foreign_keys=[User.employee_id])
+    project_links = relationship("EmployeeProject", foreign_keys="EmployeeProject.employee_id")
+
+    @property
+    def project_ids(self):
+        return [link.project_id for link in self.project_links]
+
+
+class EmployeeProject(Base):
+    """Many-to-many: which projects an employee belongs to. An employee may
+    only raise Employee Claims against a project they're linked to here
+    (enforced in claims.py::_assert_claim_project_allowed) - mirrors the
+    VendorProject / ProjectAccountsUser pattern used elsewhere."""
+
+    __tablename__ = "employee_projects"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+    employee = relationship("Employee", foreign_keys=[employee_id], overlaps="project_links")
+    project = relationship("Project", foreign_keys=[project_id])
+
+    __table_args__ = (UniqueConstraint("employee_id", "project_id", name="uq_employee_project"),)
 
 
 class ExpenseCategory(Base):

@@ -34,7 +34,6 @@ class EmployeeBase(BaseModel):
     employee_name: str
     designation: str | None = None
     department: str | None = None
-    project_id: int | None = None
     manager_id: int | None = None
     email: str | None = None
     phone: str | None = None
@@ -44,11 +43,15 @@ class EmployeeCreate(EmployeeBase):
     bank_name: str | None = None
     account_number: str | None = None
     ifsc: str | None = None
+    # Which projects this employee belongs to - they may only raise Employee
+    # Claims against a project they're linked to here.
+    project_ids: list[int] = []
 
 
 class EmployeeOut(EmployeeBase):
     id: int
     status: str
+    project_ids: list[int] = []
 
     class Config:
         from_attributes = True

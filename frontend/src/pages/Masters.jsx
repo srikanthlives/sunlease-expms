@@ -102,7 +102,7 @@ export function EmployeesMaster() {
   const [projects, setProjects] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const emptyForm = { employee_code: "", employee_name: "", designation: "", department: "", project_id: "", manager_id: "", email: "", phone: "" };
+  const emptyForm = { employee_code: "", employee_name: "", designation: "", department: "", project_ids: [], manager_id: "", email: "", phone: "" };
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -125,7 +125,7 @@ export function EmployeesMaster() {
     setForm({
       employee_code: emp.employee_code, employee_name: emp.employee_name,
       designation: emp.designation || "", department: emp.department || "",
-      project_id: emp.project_id || "", manager_id: emp.manager_id || "",
+      project_ids: emp.project_ids || [], manager_id: emp.manager_id || "",
       email: emp.email || "", phone: emp.phone || "",
     });
     setError("");
@@ -137,7 +137,7 @@ export function EmployeesMaster() {
     setBusy(true);
     setError("");
     try {
-      const payload = { ...form, project_id: form.project_id || null, manager_id: form.manager_id || null };
+      const payload = { ...form, manager_id: form.manager_id || null };
       if (editingId != null) {
         await client.put(`/employees/${editingId}`, payload);
       } else {
@@ -154,7 +154,7 @@ export function EmployeesMaster() {
     }
   }
 
-  const projectName = (id) => projects.find((p) => p.id === id)?.name || "—";
+  const projectNames = (ids) => (ids && ids.length > 0 ? projects.filter((p) => ids.includes(p.id)).map((p) => p.name).join(", ") : "— none —");
   const managerName = (id) => employees.find((e) => e.id === id)?.employee_name || "—";
 
   return (
@@ -177,16 +177,32 @@ export function EmployeesMaster() {
               <Input label="Full Name" required value={form.employee_name} onChange={(e) => setForm((s) => ({ ...s, employee_name: e.target.value }))} />
               <Input label="Designation" value={form.designation} onChange={(e) => setForm((s) => ({ ...s, designation: e.target.value }))} />
               <Input label="Department" value={form.department} onChange={(e) => setForm((s) => ({ ...s, department: e.target.value }))} />
-              <Select label="Project" value={form.project_id} onChange={(e) => setForm((s) => ({ ...s, project_id: e.target.value }))}>
-                <option value="">— none —</option>
-                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </Select>
               <Select label="Manager" value={form.manager_id} onChange={(e) => setForm((s) => ({ ...s, manager_id: e.target.value }))}>
                 <option value="">— none (top-level) —</option>
                 {employees.filter((emp) => emp.id !== editingId).map((emp) => <option key={emp.id} value={emp.id}>{emp.employee_name}</option>)}
               </Select>
               <Input label="Email" type="email" value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} />
               <Input label="Phone" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} />
+            </div>
+            <div>
+              <span className="block text-xs font-medium text-ink/60 mb-1.5">Projects (which projects this employee can raise claims against)</span>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto border border-ink/10 rounded-md p-3">
+                {projects.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.project_ids.includes(p.id)}
+                      onChange={(e) =>
+                        setForm((s) => ({
+                          ...s,
+                          project_ids: e.target.checked ? [...s.project_ids, p.id] : s.project_ids.filter((id) => id !== p.id),
+                        }))
+                      }
+                    />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
             </div>
             <p className="text-xs text-ink/40">
               Assigning a Manager here determines who does first-level approval on this employee's claims. After creating the employee, link a login for them from Administration → Users &amp; Roles.
@@ -203,7 +219,7 @@ export function EmployeesMaster() {
             { key: "employee_code", header: "Code" },
             { key: "employee_name", header: "Name" },
             { key: "designation", header: "Designation" },
-            { key: "project_id", header: "Project", render: (r) => projectName(r.project_id) },
+            { key: "project_ids", header: "Projects", render: (r) => <span className="text-xs">{projectNames(r.project_ids)}</span> },
             { key: "manager_id", header: "Manager", render: (r) => managerName(r.manager_id) },
             { key: "status", header: "Status" },
             {

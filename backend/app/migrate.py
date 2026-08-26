@@ -66,8 +66,8 @@ def migrate(target_engine: Engine = None, verbose: bool = True) -> dict:
     existing_tables = set(inspector.get_table_names())
     # Use metadata.tables (unordered) rather than sorted_tables - this
     # project has a genuine circular FK dependency (Project.accounts_
-    # approver_id -> User -> Employee.project_id -> Project), which trips
-    # SQLAlchemy's topological sort. SQLite doesn't enforce FK ordering at
+    # approver_id -> User -> Employee.user -> EmployeeProject -> Project),
+    # which trips SQLAlchemy's topological sort. SQLite doesn't enforce FK ordering at
     # CREATE TABLE time (constraints are checked at DML time, if enabled at
     # all), so table creation order is safe to leave unordered here.
     all_tables = list(Base.metadata.tables.values())
@@ -93,7 +93,29 @@ def migrate(target_engine: Engine = None, verbose: bool = True) -> dict:
                 conn.execute(text(_add_column_ddl(table.name, column)))
                 summary["columns_added"].append((table.name, column.name))
 
+    # 3. One-off data backfill: Employee.project_id (single FK) was replaced
+    # by the employee_projects many-to-many table. The old column is never
+    # dropped (see module docstring), so on the first run after this change
+    # - when employee_projects is freshly created but still empty - copy each
+    # employee's existing single project assignment into the new table so no
+    # employee silently loses their project link.
+    if "employee_projects" in summary["tables_created"]:
+        inspector = inspect(target_engine)
+        employee_columns = {c["name"] for c in inspector.get_columns("employees")}
+        if "project_id" in employee_columns:
+            with target_engine.begin() as conn:
+                rows = conn.execute(text('SELECT id, project_id FROM employees WHERE project_id IS NOT NULL')).fetchall()
+                for employee_id, project_id in rows:
+                    conn.execute(
+                        text('INSERT INTO employee_projects (employee_id, project_id, created_at) VALUES (:e, :p, CURRENT_TIMESTAMP)'),
+                        {"e": employee_id, "p": project_id},
+                    )
+                if rows:
+                    summary["employee_projects_backfilled"] = len(rows)
+
     if verbose:
+        if summary.get("employee_projects_backfilled"):
+            print(f"Backfilled {summary['employee_projects_backfilled']} employee->project link(s) from the old Employee.project_id column.")
         if not summary["tables_created"] and not summary["columns_added"]:
             print("Database schema already matches the models - nothing to do.")
         else:

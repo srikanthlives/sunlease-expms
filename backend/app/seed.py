@@ -5,7 +5,7 @@ seed. Safe to re-run (idempotent)."""
 from app.core.security import hash_password
 from app.db.session import Base, SessionLocal, engine
 from app.migrate import migrate
-from app.models.models import Role, User, Project, ProjectAccountsUser, ExpenseCategory, ExpenseSubCategory, Account, Vendor, Employee, ApprovalRule
+from app.models.models import Role, User, Project, ProjectAccountsUser, ExpenseCategory, ExpenseSubCategory, Account, Vendor, Employee, EmployeeProject, ApprovalRule
 from app.models.enums import RoleName
 
 migrate(verbose=True)
@@ -89,9 +89,11 @@ try:
     # their own claims. They sit at the top of this small hierarchy (no
     # manager of their own).
     if not db.query(Employee).filter(Employee.employee_code == "EMP-0000").first():
-        mgr_emp = Employee(employee_code="EMP-0000", employee_name="Priya Sharma", designation="Engineering Manager", project_id=gen_project.id if gen_project else None)
+        mgr_emp = Employee(employee_code="EMP-0000", employee_name="Priya Sharma", designation="Engineering Manager")
         db.add(mgr_emp)
         db.flush()
+        if gen_project:
+            db.add(EmployeeProject(employee_id=mgr_emp.id, project_id=gen_project.id))
         if not db.query(User).filter(User.username == "manager").first():
             db.add(User(username="manager", full_name="Priya Sharma", hashed_password=hash_password("Manager@123"),
                         role_id=role_map[RoleName.MANAGER].id, employee_id=mgr_emp.id))
@@ -103,11 +105,12 @@ try:
     if not db.query(Employee).filter(Employee.employee_code == "EMP-0001").first():
         emp = Employee(
             employee_code="EMP-0001", employee_name="Ajai Kumar", designation="Executive",
-            project_id=gen_project.id if gen_project else None,
             manager_id=manager_employee.id if manager_employee else None,
         )
         db.add(emp)
         db.flush()
+        if gen_project:
+            db.add(EmployeeProject(employee_id=emp.id, project_id=gen_project.id))
         if not db.query(User).filter(User.username == "ajai").first():
             db.add(User(username="ajai", full_name="Ajai Kumar", hashed_password=hash_password("Employee@123"),
                         role_id=role_map[RoleName.EMPLOYEE].id, employee_id=emp.id))
