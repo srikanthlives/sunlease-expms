@@ -52,6 +52,7 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
             { key: "claim_number", header: "Claim #" },
             { key: "employee_id", header: "Employee", render: (r) => empName(r.employee_id) },
             { key: "category_id", header: "Overall Head", render: (r) => categoryName(r.category_id) },
+            { key: "description", header: "Description", render: (r) => <span className="text-ink/60">{r.description || "—"}</span> },
             { key: "claim_date", header: "Date" },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
@@ -138,6 +139,13 @@ export function ClaimDetail() {
         </div>
       )}
 
+      {claim.description && (
+        <Card>
+          <div className="text-xs font-medium text-ink/40 mb-1">Description</div>
+          <div className="text-sm text-ink/70">{claim.description}</div>
+        </Card>
+      )}
+
       <div className="flex justify-end">
         <Attachments documentType="CLAIM" claimId={claim.id} label="Overall Claim Attachments" readOnly={!canEdit} />
       </div>
@@ -152,6 +160,8 @@ export function ClaimDetail() {
         <Table
           columns={[
             { key: "expense_date", header: "Date" },
+            { key: "expense_head_id", header: "Head", render: (r) => masters.categories.find((c) => c.id === r.expense_head_id)?.name || "—" },
+            { key: "expense_sub_head_id", header: "Sub-Head", render: (r) => masters.subCategories.find((s) => s.id === r.expense_sub_head_id)?.name || "—" },
             { key: "description", header: "Description" },
             { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
             {
