@@ -61,27 +61,55 @@ def delete_claim(db: Session, claim: EmployeeClaim, actor_id: int):
 
 
 def _replace_lines(db: Session, claim: EmployeeClaim, lines: list[dict]):
+    """Reconciles claim.lines against the incoming line list in place, by
+    id, instead of clearing and recreating every row on every edit. Each
+    EmployeeClaimLine.id is the target of Document.claim_line_id (per-line
+    attachment proof) - blindly deleting and recreating every line (even
+    ones the user didn't touch, e.g. when only adding a new line) silently
+    orphaned every existing attachment because the old line ids ceased to
+    exist. Lines the caller genuinely removed still get deleted, along with
+    their attachments (files included), same as delete_claim."""
     if not lines:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A claim requires at least one expense line")
-    # Use the ORM relationship (not raw db.delete on individually-fetched
-    # rows) so the cascade="all, delete-orphan" on EmployeeClaim.lines keeps
-    # the in-memory collection consistent - manually deleting rows and then
-    # re-adding the parent leaves a stale collection that SQLAlchemy chokes
-    # on when it cascades the next save.
-    claim.lines.clear()
-    db.flush()
+
+    existing_by_id = {line.id: line for line in claim.lines}
+    incoming_ids = {line["id"] for line in lines if line.get("id")}
+
+    removed_ids = set(existing_by_id) - incoming_ids
+    if removed_ids:
+        docs = db.query(Document).filter(Document.claim_line_id.in_(removed_ids)).all()
+        storage = get_storage()
+        for doc in docs:
+            storage.delete_file(doc.stored_filename)
+            db.delete(doc)
+        db.flush()
+
+    for line in list(claim.lines):
+        if line.id in removed_ids:
+            claim.lines.remove(line)
+
     total = Decimal("0")
     for line in lines:
         amount = Decimal(str(line["amount"]))
         if amount <= 0:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Each claim line amount must be greater than zero")
-        claim.lines.append(EmployeeClaimLine(
-            expense_date=line["expense_date"],
-            expense_head_id=line["expense_head_id"],
-            expense_sub_head_id=line.get("expense_sub_head_id"),
-            description=line.get("description"),
-            amount=amount,
-        ))
+        line_id = line.get("id")
+        existing = existing_by_id.get(line_id) if line_id else None
+        if existing is not None:
+            existing.expense_date = line["expense_date"]
+            existing.expense_head_id = line["expense_head_id"]
+            existing.expense_sub_head_id = line.get("expense_sub_head_id")
+            existing.description = line.get("description")
+            existing.amount = amount
+            db.add(existing)
+        else:
+            claim.lines.append(EmployeeClaimLine(
+                expense_date=line["expense_date"],
+                expense_head_id=line["expense_head_id"],
+                expense_sub_head_id=line.get("expense_sub_head_id"),
+                description=line.get("description"),
+                amount=amount,
+            ))
         total += amount
     claim.total_amount = total
     db.flush()

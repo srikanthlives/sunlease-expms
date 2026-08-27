@@ -336,7 +336,7 @@ class EmployeeClaim(Base):
     employee = relationship("Employee", foreign_keys=[employee_id])
     project = relationship("Project", foreign_keys=[project_id])
     category = relationship("ExpenseCategory", foreign_keys=[category_id])
-    lines = relationship("EmployeeClaimLine", back_populates="claim", cascade="all, delete-orphan")
+    lines = relationship("EmployeeClaimLine", back_populates="claim", cascade="all, delete-orphan", order_by="EmployeeClaimLine.expense_date")
     expense = relationship("Expense", foreign_keys=[expense_id])
 
     @property

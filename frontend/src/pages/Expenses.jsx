@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -120,7 +120,7 @@ export default function Expenses() {
             { key: "expense_number", header: "Expense #", stickyLeft: true, stickyWidth: 140, render: (r) => <span className="whitespace-nowrap">{r.expense_number}</span> },
             {
               key: "expense_date", header: "Date", stickyLeft: true, stickyWidth: 110, sortable: true,
-              render: (r) => <span className="whitespace-nowrap">{r.expense_date}</span>,
+              render: (r) => <span className="whitespace-nowrap">{formatDate(r.expense_date)}</span>,
             },
             {
               key: "source_type", header: "Source", sortable: true,

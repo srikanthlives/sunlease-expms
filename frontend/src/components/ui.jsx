@@ -100,6 +100,32 @@ export function formatMoney(amount) {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Display format everywhere in the app: DD-MMM-YYYY. Accepts an ISO date
+// ("2026-08-26"), an ISO datetime, a Date, or null/undefined - never touch
+// values feeding a native <input type="date">, which requires ISO.
+export function formatDate(value) {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(String(value).length <= 10 ? `${value}T00:00:00` : value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = MONTH_ABBR[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+// Same DD-MMM-YYYY date, plus a 24h time - for timestamps (audit logs, edit
+// request history) where dropping the time-of-day would lose information.
+export function formatDateTime(value) {
+  if (!value) return "—";
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  const hours = String(d.getHours()).padStart(2, "0");
+  const minutes = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDate(d)}, ${hours}:${minutes}`;
+}
+
 export function Table({
   columns, rows, keyField = "id", onRowClick, onRowDoubleClick, empty = "No records found.",
   spacious = false, compact = false, footer, stickyHeader = false, maxHeight,

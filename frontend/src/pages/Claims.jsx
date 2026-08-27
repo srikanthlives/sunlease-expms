@@ -3,10 +3,10 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate } from "../components/ui";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Trash2 } from "lucide-react";
+import { Plus, X, Trash2, Pencil } from "lucide-react";
 
 export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const { user } = useAuth();
@@ -53,7 +53,7 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
             { key: "employee_id", header: "Employee", render: (r) => empName(r.employee_id) },
             { key: "category_id", header: "Overall Head", render: (r) => categoryName(r.category_id) },
             { key: "description", header: "Description", render: (r) => <span className="text-ink/60">{r.description || "—"}</span> },
-            { key: "claim_date", header: "Date" },
+            { key: "claim_date", header: "Date", render: (r) => formatDate(r.claim_date) },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
           ]}
@@ -124,7 +124,7 @@ export function ClaimDetail() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-display font-semibold">{claim.claim_number}</h1>
-          <p className="text-sm text-ink/50 mt-0.5">{empName} · {claim.claim_date} · {categoryName}</p>
+          <p className="text-sm text-ink/50 mt-0.5">{empName} · {formatDate(claim.claim_date)} · {categoryName}</p>
         </div>
         <StatusBadge status={claim.status} />
       </div>
@@ -159,7 +159,7 @@ export function ClaimDetail() {
       <Card>
         <Table
           columns={[
-            { key: "expense_date", header: "Date" },
+            { key: "expense_date", header: "Date", render: (r) => formatDate(r.expense_date) },
             { key: "expense_head_id", header: "Head", render: (r) => masters.categories.find((c) => c.id === r.expense_head_id)?.name || "—" },
             { key: "expense_sub_head_id", header: "Sub-Head", render: (r) => masters.subCategories.find((s) => s.id === r.expense_sub_head_id)?.name || "—" },
             { key: "description", header: "Description" },
@@ -223,10 +223,17 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
   const [description, setDescription] = useState(editingClaim?.description || "");
   const [lines, setLines] = useState(
     editingClaim?.lines?.length
-      ? editingClaim.lines.map((l) => ({
-          expense_date: l.expense_date, expense_head_id: l.expense_head_id,
-          expense_sub_head_id: l.expense_sub_head_id || "", description: l.description || "", amount: l.amount,
-        }))
+      ? [...editingClaim.lines]
+          .sort((a, b) => a.expense_date.localeCompare(b.expense_date))
+          .map((l) => ({
+            id: l.id, expense_date: l.expense_date, expense_head_id: l.expense_head_id,
+            expense_sub_head_id: l.expense_sub_head_id || "", description: l.description || "", amount: l.amount,
+            // Already-saved lines start locked - editing one requires an
+            // explicit click on its Edit icon, so the rest of an already-
+            // saved claim can never be touched by accident while adding or
+            // removing an unrelated line.
+            locked: true,
+          }))
       : [{ expense_date: new Date().toISOString().slice(0, 10), expense_head_id: "", expense_sub_head_id: "", description: "", amount: "" }]
   );
   const [error, setError] = useState("");
@@ -234,6 +241,9 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
 
   function updateLine(i, k, v) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
+  }
+  function unlockLine(i) {
+    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, locked: false } : l)));
   }
   function addLine() {
     setLines((ls) => [...ls, { expense_date: new Date().toISOString().slice(0, 10), expense_head_id: "", expense_sub_head_id: "", description: "", amount: "" }]);
@@ -254,7 +264,7 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
         project_id: projectId || null,
         category_id: Number(categoryId),
         description,
-        lines: lines.map((l) => ({ ...l, expense_head_id: Number(l.expense_head_id), expense_sub_head_id: l.expense_sub_head_id || null, amount: Number(l.amount) })),
+        lines: lines.map(({ locked, ...l }) => ({ ...l, expense_head_id: Number(l.expense_head_id), expense_sub_head_id: l.expense_sub_head_id || null, amount: Number(l.amount) })),
       };
       if (editingClaim) {
         await client.put(`/claims/${editingClaim.id}`, body);
@@ -297,8 +307,22 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
 
         <div className="space-y-2">
           <div className="text-xs font-medium text-ink/60">Expense Lines (under {masters.categories.find((c) => c.id === Number(categoryId))?.name || "the Overall Head above"})</div>
-          {lines.map((l, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2 items-end bg-brand-50 rounded-md p-3">
+          {lines.map((l, i) => l.locked ? (
+            <div key={l.id ?? i} className="grid grid-cols-12 gap-2 items-center bg-ink/5 rounded-md p-3 text-sm">
+              <div className="col-span-2 text-ink/70">{formatDate(l.expense_date)}</div>
+              <div className="col-span-2 text-ink/70">{masters.categories.find((c) => c.id === Number(l.expense_head_id))?.name || "—"}</div>
+              <div className="col-span-2 text-ink/70">{masters.subCategories.find((s) => s.id === Number(l.expense_sub_head_id))?.name || "—"}</div>
+              <div className="col-span-3 text-ink/70 truncate">{l.description || "—"}</div>
+              <div className="col-span-2 tabular font-medium">{formatMoney(l.amount)}</div>
+              <div className="col-span-1 flex items-center gap-2 justify-end">
+                <button type="button" onClick={() => unlockLine(i)} className="text-ink/30 hover:text-brand-700" title="Edit this item">
+                  <Pencil size={15} />
+                </button>
+                {lines.length > 1 && <button type="button" onClick={() => removeLine(i)} className="text-ink/30 hover:text-danger" title="Delete this item"><Trash2 size={16} /></button>}
+              </div>
+            </div>
+          ) : (
+            <div key={l.id ?? i} className="grid grid-cols-12 gap-2 items-end bg-brand-50 rounded-md p-3">
               <div className="col-span-2">
                 <Input label="Date" type="date" value={l.expense_date} onChange={(e) => updateLine(i, "expense_date", e.target.value)} required />
               </div>
@@ -318,7 +342,7 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
                 <Input label="Amount" type="number" step="0.01" value={l.amount} onChange={(e) => updateLine(i, "amount", e.target.value)} required />
               </div>
               <div className="col-span-1 pb-1">
-                {lines.length > 1 && <button type="button" onClick={() => removeLine(i)} className="text-ink/30 hover:text-danger"><Trash2 size={16} /></button>}
+                {lines.length > 1 && <button type="button" onClick={() => removeLine(i)} className="text-ink/30 hover:text-danger" title="Delete this item"><Trash2 size={16} /></button>}
               </div>
             </div>
           ))}

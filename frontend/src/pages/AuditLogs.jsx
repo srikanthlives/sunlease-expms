@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import client from "../api/client";
-import { Card, Table } from "../components/ui";
+import { Card, Table, formatDateTime } from "../components/ui";
 
 export default function AuditLogs() {
   const [logs, setLogs] = useState([]);
@@ -14,7 +14,7 @@ export default function AuditLogs() {
       <Card>
         <Table
           columns={[
-            { key: "created_at", header: "Time", render: (r) => new Date(r.created_at).toLocaleString() },
+            { key: "created_at", header: "Time", render: (r) => formatDateTime(r.created_at) },
             { key: "entity_type", header: "Entity" },
             { key: "entity_id", header: "ID" },
             { key: "action", header: "Action" },

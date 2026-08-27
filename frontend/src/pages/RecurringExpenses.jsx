@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Table, Button, Input, Select, StatusBadge, formatMoney, vendorLabel } from "../components/ui";
+import { Card, Table, Button, Input, Select, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import { Plus, X, Pencil, Power } from "lucide-react";
 
 const FREQUENCIES = [
@@ -184,7 +184,7 @@ function TemplatesTab({ masters }) {
     { key: "payee", header: "Payee", render: payeeName },
     { key: "project_id", header: "Project", render: (r) => projectName(r.project_id) },
     { key: "category_id", header: "Category", render: (r) => categoryName(r.category_id) },
-    { key: "next_occurrence_date", header: "Next Bill Date" },
+    { key: "next_occurrence_date", header: "Next Bill Date", render: (r) => formatDate(r.next_occurrence_date) },
     { key: "is_active", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
     {
       key: "__actions", header: "", render: (r) => (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, StatusBadge, Button, Input, formatMoney } from "../components/ui";
+import { Card, StatusBadge, Button, Input, formatMoney, formatDateTime } from "../components/ui";
 import { CheckCircle2, XCircle, Clock } from "lucide-react";
 
 const ENTITY_LABELS = { EXPENSE: "Expense", INVOICE: "Invoice", PAYMENT: "Payment" };
@@ -99,7 +99,7 @@ export default function EditRequests() {
                         <StatusBadge status={req.status} />
                       </div>
                       <div className="text-xs text-ink/50 mb-3">
-                        Requested by <span className="font-medium text-ink/70">{req.requested_by_name}</span> · {new Date(req.requested_at).toLocaleString()}
+                        Requested by <span className="font-medium text-ink/70">{req.requested_by_name}</span> · {formatDateTime(req.requested_at)}
                       </div>
                       <ChangeDiff req={req} />
                     </div>
@@ -133,7 +133,7 @@ export default function EditRequests() {
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-sm font-semibold">{ENTITY_LABELS[req.entity_type]} #{req.entity_id}</span>
                   <StatusBadge status={req.status} />
-                  <span className="text-xs text-ink/40 inline-flex items-center gap-1 ml-auto"><Clock size={12} /> {new Date(req.requested_at).toLocaleString()}</span>
+                  <span className="text-xs text-ink/40 inline-flex items-center gap-1 ml-auto"><Clock size={12} /> {formatDateTime(req.requested_at)}</span>
                 </div>
                 <ChangeDiff req={req} />
               </Card>
@@ -155,9 +155,9 @@ export default function EditRequests() {
                   <StatusBadge status={req.status} />
                 </div>
                 <div className="text-xs text-ink/50 mb-3">
-                  Requested by <span className="font-medium text-ink/70">{req.requested_by_name}</span> · {new Date(req.requested_at).toLocaleString()}
+                  Requested by <span className="font-medium text-ink/70">{req.requested_by_name}</span> · {formatDateTime(req.requested_at)}
                   {req.reviewed_by_name && (
-                    <> · {req.status === "APPROVED" ? "Approved" : "Rejected"} by <span className="font-medium text-ink/70">{req.reviewed_by_name}</span> · {new Date(req.reviewed_at).toLocaleString()}</>
+                    <> · {req.status === "APPROVED" ? "Approved" : "Rejected"} by <span className="font-medium text-ink/70">{req.reviewed_by_name}</span> · {formatDateTime(req.reviewed_at)}</>
                   )}
                 </div>
                 <ChangeDiff req={req} />

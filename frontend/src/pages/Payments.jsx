@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
+import { Card, Table, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -88,7 +88,7 @@ export default function Payments() {
         <Table
           columns={[
             { key: "payment_number", header: "Payment #" },
-            { key: "payment_date", header: "Date" },
+            { key: "payment_date", header: "Date", render: (r) => formatDate(r.payment_date) },
             { key: "payee", header: "Payee", render: (r) => payeeOf(r) },
             { key: "account_id", header: "Account", render: (r) => masters.accounts.find((a) => a.id === r.account_id)?.account_name || "—" },
             { key: "payment_mode", header: "Mode" },

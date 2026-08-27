@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import client, { BASE_URL, apiErrorMessage } from "../api/client";
 import { Button } from "./ui";
-import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2 } from "lucide-react";
+import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } from "lucide-react";
 
 /**
  * Attach & preview documents (invoices/bills, payment receipts, employee
@@ -19,6 +19,8 @@ export default function Attachments({
   const [error, setError] = useState("");
   const [previewDoc, setPreviewDoc] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
 
   const entityParams = { expense_id: expenseId, invoice_id: invoiceId, payment_id: paymentId, claim_id: claimId, claim_line_id: claimLineId };
@@ -52,14 +54,18 @@ export default function Attachments({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  async function deleteDoc(doc) {
-    if (!window.confirm(`Remove "${doc.original_filename}"?`)) return;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     setError("");
     try {
-      await client.delete(`/documents/${doc.id}`);
+      await client.delete(`/documents/${deleteTarget.id}`);
+      setDeleteTarget(null);
       load();
     } catch (err) {
       setError(apiErrorMessage(err));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -119,7 +125,7 @@ export default function Attachments({
                       <Eye size={16} />
                     </button>
                     {!readOnly && (
-                      <button type="button" onClick={() => deleteDoc(d)} className="text-ink/30 hover:text-danger shrink-0" title="Remove">
+                      <button type="button" onClick={() => setDeleteTarget(d)} className="text-ink/30 hover:text-danger shrink-0" title="Remove">
                         <Trash2 size={15} />
                       </button>
                     )}
@@ -157,7 +163,55 @@ export default function Attachments({
       )}
 
       {previewDoc && <PreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          doc={deleteTarget} busy={deleting}
+          onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete}
+        />
+      )}
     </>
+  );
+}
+
+// Two-step confirmation, per policy: deleting an attachment is permanent
+// (file + record both go), so a single click - even on a confirm button -
+// isn't enough of a speed bump for an irreversible action.
+function DeleteConfirmModal({ doc, busy, onCancel, onConfirm }) {
+  const [step, setStep] = useState(1);
+
+  return (
+    <div className="fixed inset-0 bg-ink/50 z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-sm p-5 relative" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onCancel} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
+        <div className="flex items-center gap-2 mb-2 text-danger">
+          <AlertTriangle size={18} />
+          <h3 className="font-display font-semibold text-lg">{step === 1 ? "Delete attachment?" : "Are you absolutely sure?"}</h3>
+        </div>
+        {step === 1 ? (
+          <>
+            <p className="text-sm text-ink/60 mb-5">
+              Remove <span className="font-medium text-ink/80">"{doc.original_filename}"</span> from this record?
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="danger" onClick={() => setStep(2)} className="flex-1">Yes, delete it</Button>
+              <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ink/60 mb-5">
+              This <span className="font-medium">cannot be undone</span> - the file will be permanently removed. Confirm once more to proceed.
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="danger" disabled={busy} onClick={onConfirm} className="flex-1">
+                {busy ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : "Permanently delete"}
+              </Button>
+              <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

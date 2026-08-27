@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Button, Input, StatusBadge, formatMoney, vendorLabel } from "../components/ui";
+import { Card, Button, Input, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 
 export default function RecurringExpenseApprovals() {
@@ -95,7 +95,7 @@ export default function RecurringExpenseApprovals() {
                       {row.amount_type === "OPEN" && <span className="text-[11px] text-ink/40 italic">Open Amount</span>}
                     </div>
                     <div className="text-xs text-ink/50 mb-2">
-                      Bill date {row.occurrence_date}{row.due_date ? ` · Due ${row.due_date}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}
+                      Bill date {formatDate(row.occurrence_date)}{row.due_date ? ` · Due ${formatDate(row.due_date)}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}
                     </div>
                     {needsAccounts ? (
                       <div className="flex gap-3 max-w-md">

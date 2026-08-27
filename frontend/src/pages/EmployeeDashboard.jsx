@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import client from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, StatCard, StatusBadge, Button, formatMoney } from "../components/ui";
+import { Card, StatCard, StatusBadge, Button, formatMoney, formatDate } from "../components/ui";
 import { Plus } from "lucide-react";
 
 const STATUS_ORDER = ["DRAFT", "SUBMITTED", "PENDING_ACCOUNTS_APPROVAL", "APPROVED", "REJECTED", "CANCELLED"];
@@ -64,7 +64,7 @@ export default function EmployeeDashboard() {
               <li key={c.id} className="py-2.5 flex items-center justify-between cursor-pointer hover:bg-brand-50 -mx-2 px-2 rounded" onClick={() => navigate(`/claims/${c.id}`)}>
                 <div>
                   <div className="text-sm font-medium">{c.claim_number}</div>
-                  <div className="text-xs text-ink/40">{c.claim_date}</div>
+                  <div className="text-xs text-ink/40">{formatDate(c.claim_date)}</div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="tabular text-sm">{formatMoney(c.total_amount)}</span>

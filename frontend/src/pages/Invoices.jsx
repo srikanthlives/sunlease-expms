@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
@@ -47,7 +47,7 @@ export default function Invoices() {
           columns={[
             { key: "invoice_number", header: "Invoice #" },
             { key: "vendor_id", header: "Vendor", render: (r) => vendorName(r.vendor_id) },
-            { key: "invoice_date", header: "Date" },
+            { key: "invoice_date", header: "Date", render: (r) => formatDate(r.invoice_date) },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
             {

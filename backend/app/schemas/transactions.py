@@ -122,6 +122,10 @@ class InvoiceOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ClaimLineIn(BaseModel):
+    # Set only when editing an existing claim, to a line's existing id -
+    # lets the server update that row in place (preserving its attachments)
+    # instead of recreating it. Omitted/null for a brand-new line.
+    id: int | None = None
     expense_date: dt.date
     expense_head_id: int
     expense_sub_head_id: int | None = None
