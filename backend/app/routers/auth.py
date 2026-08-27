@@ -107,6 +107,20 @@ def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)
     if "email" in changes and changes["email"] and changes["email"] != user.email:
         if db.query(User).filter(User.email == changes["email"], User.id != user_id).first():
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Email already exists")
+    if "role_id" in changes and changes["role_id"] != user.role_id:
+        new_role = db.query(Role).filter(Role.id == changes["role_id"]).first()
+        if not new_role:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid role_id")
+        # This endpoint only supports toggling EMPLOYEE <-> MANAGER (e.g.
+        # promoting an employee to a manager, or demoting one back) - not a
+        # general role reassignment. Escalating to/from Admin/Accounts/etc
+        # still requires disabling the account and creating a new one, same
+        # as before this feature.
+        switchable = (RoleName.EMPLOYEE, RoleName.MANAGER)
+        if user.role.name not in switchable or new_role.name not in switchable:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only switching a user between Employee and Manager is supported here")
+        if new_role.name == RoleName.MANAGER and not user.employee_id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "A Manager must be linked to an Employee record first")
     for field, value in changes.items():
         setattr(user, field, value)
     db.add(user)

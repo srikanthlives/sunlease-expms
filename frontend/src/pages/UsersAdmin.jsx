@@ -55,7 +55,7 @@ export default function UsersAdmin() {
       {showRoleForm && <RoleForm onClose={() => setShowRoleForm(false)} onCreated={() => { setShowRoleForm(false); load(); }} />}
       {showUserForm && <UserForm roles={roles} isSuperAdmin={isSuperAdmin} onClose={() => setShowUserForm(false)} onCreated={() => { setShowUserForm(false); load(); }} />}
       {resetTarget && <ResetPasswordModal user={resetTarget} onClose={() => setResetTarget(null)} />}
-      {editUserTarget && <EditUserModal user={editUserTarget} onClose={() => setEditUserTarget(null)} onSaved={() => { setEditUserTarget(null); load(); }} />}
+      {editUserTarget && <EditUserModal user={editUserTarget} roles={roles} onClose={() => setEditUserTarget(null)} onSaved={() => { setEditUserTarget(null); load(); }} />}
       {editRoleTarget && <EditRoleModal role={editRoleTarget} onClose={() => setEditRoleTarget(null)} onSaved={() => { setEditRoleTarget(null); load(); }} />}
 
       <Card>
@@ -212,17 +212,24 @@ function UserForm({ roles, isSuperAdmin, onClose, onCreated }) {
   );
 }
 
-function EditUserModal({ user, onClose, onSaved }) {
-  const [form, setForm] = useState({ username: user.username, email: user.email || "", full_name: user.full_name || "" });
+function EditUserModal({ user, roles, onClose, onSaved }) {
+  const currentRole = roles.find((r) => r.name === user.role);
+  const [form, setForm] = useState({ username: user.username, email: user.email || "", full_name: user.full_name || "", role_id: currentRole?.id || "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Only Employee <-> Manager switching is supported (mirrors the backend
+  // guard) - Admin/Accounts/etc still need a new account, not a role edit.
+  const canSwitchRole = ["EMPLOYEE", "MANAGER"].includes(user.role);
+  const switchableRoles = roles.filter((r) => ["EMPLOYEE", "MANAGER"].includes(r.name));
 
   function buildChanges() {
     const changes = {};
     if (form.username !== user.username) changes.username = form.username;
     if ((form.email || null) !== (user.email || null)) changes.email = form.email || null;
     if ((form.full_name || null) !== (user.full_name || null)) changes.full_name = form.full_name || null;
+    if (canSwitchRole && form.role_id && Number(form.role_id) !== currentRole?.id) changes.role_id = Number(form.role_id);
     return changes;
   }
 
@@ -251,6 +258,11 @@ function EditUserModal({ user, onClose, onSaved }) {
           <Input label="Username" required value={form.username} onChange={(e) => set("username", e.target.value)} autoFocus />
           <Input label="Full Name" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
           <Input label="Email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
+          {canSwitchRole && (
+            <Select label="Role" value={form.role_id} onChange={(e) => set("role_id", e.target.value)}>
+              {switchableRoles.map((r) => <option key={r.id} value={r.id}>{r.name.replace(/_/g, " ")}</option>)}
+            </Select>
+          )}
           {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
           <Button type="submit" disabled={busy} className="w-full">{busy ? "Saving…" : "Save Changes"}</Button>
         </form>

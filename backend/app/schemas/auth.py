@@ -44,6 +44,9 @@ class UserUpdate(BaseModel):
     username: str | None = None
     email: EmailStr | None = None
     full_name: str | None = None
+    # Only supports toggling a user between EMPLOYEE and MANAGER (see
+    # update_user's guard) - not a general role reassignment.
+    role_id: int | None = None
 
 
 class RoleCreate(BaseModel):
