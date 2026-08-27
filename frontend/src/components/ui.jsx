@@ -101,7 +101,7 @@ export function formatMoney(amount) {
 }
 
 export function Table({
-  columns, rows, keyField = "id", onRowClick, empty = "No records found.",
+  columns, rows, keyField = "id", onRowClick, onRowDoubleClick, empty = "No records found.",
   spacious = false, compact = false, footer, stickyHeader = false, maxHeight,
   // Controlled/server-driven sort: pass `sort` ({key, dir}) + `onSortChange`
   // when the caller is fetching already-sorted rows (e.g. sorting the full
@@ -200,8 +200,9 @@ export function Table({
           {sortedRows.map((row) => (
             <tr
               key={row[keyField]}
-              className={`border-b border-ink/5 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-brand-50" : ""}`}
+              className={`border-b border-ink/5 last:border-0 ${onRowClick || onRowDoubleClick ? "cursor-pointer hover:bg-brand-50" : ""}`}
               onClick={() => onRowClick && onRowClick(row)}
+              onDoubleClick={() => onRowDoubleClick && onRowDoubleClick(row)}
             >
               {columns.map((c) => (
                 <td key={c.key} style={stickyStyle(c)} className={`${cellPad} align-middle ${c.stickyLeft ? "bg-white" : ""} ${c.align === "right" ? "text-right" : ""}`}>

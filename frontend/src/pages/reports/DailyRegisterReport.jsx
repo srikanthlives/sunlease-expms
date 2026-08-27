@@ -14,19 +14,26 @@ function Row({ label, value, bold }) {
   );
 }
 
+function toLocalISODate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function shiftDate(iso, days) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toLocalISODate(d);
 }
 
 export default function DailyRegisterReport() {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(toLocalISODate(new Date()));
   const [data, setData] = useState(null);
 
   useEffect(() => { client.get("/reports/daily-register", { params: { date } }).then((res) => setData(res.data)); }, [date]);
 
-  const isToday = date === new Date().toISOString().slice(0, 10);
+  const isToday = date === toLocalISODate(new Date());
 
   return (
     <div className="space-y-6">

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation
+from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation, ExpenseCategory, ExpenseSubCategory
 from app.services.payment_status_service import get_paid_amount
 from app.services import project_scope_service
 
@@ -292,6 +292,54 @@ def project_wise_report(db: Session = Depends(get_db), user: User = Depends(get_
             "employee_claims": _d(claims), "total_expense": _d(total), "payments": _d(paid), "outstanding": _d(total - paid),
         })
     return result
+
+
+@router.get("/reports/project-wise/{project_id}/category-breakdown", dependencies=[Depends(require_report_viewer)])
+def project_category_breakdown(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    date_from: str | None = None, date_to: str | None = None,
+):
+    """Category -> sub-category expense tree for one project, powering the
+    Project-wise Report's drill-down (double-click a project row)."""
+    scope = project_scope_service.get_effective_project_scope(db, user)
+    if scope is not None and project_id not in scope:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned to this project")
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+
+    q = db.query(Expense).filter(Expense.project_id == project_id, Expense.status == "ACTIVE")
+    if date_from:
+        q = q.filter(Expense.expense_date >= date_from)
+    if date_to:
+        q = q.filter(Expense.expense_date <= date_to)
+    expenses = q.all()
+
+    categories = {c.id: c.name for c in db.query(ExpenseCategory).all()}
+    sub_categories = {s.id: s.name for s in db.query(ExpenseSubCategory).all()}
+
+    tree = {}
+    for e in expenses:
+        cat_id = e.category_id
+        cat_name = categories.get(cat_id, "Uncategorised") if cat_id else "Uncategorised"
+        node = tree.setdefault(cat_id, {"category_id": cat_id, "category_name": cat_name, "total": Decimal("0"), "sub_categories": {}})
+        node["total"] += Decimal(e.total_amount)
+        sub_id = e.sub_category_id
+        sub_name = sub_categories.get(sub_id, "Unspecified") if sub_id else "Unspecified"
+        sub_node = node["sub_categories"].setdefault(sub_id, {"sub_category_id": sub_id, "sub_category_name": sub_name, "total": Decimal("0")})
+        sub_node["total"] += Decimal(e.total_amount)
+
+    result = []
+    for node in tree.values():
+        result.append({
+            "category_id": node["category_id"], "category_name": node["category_name"], "total": _d(node["total"]),
+            "sub_categories": sorted(
+                [{"sub_category_id": s["sub_category_id"], "sub_category_name": s["sub_category_name"], "total": _d(s["total"])} for s in node["sub_categories"].values()],
+                key=lambda s: s["total"], reverse=True,
+            ),
+        })
+    result.sort(key=lambda n: n["total"], reverse=True)
+    return {"project_id": project.id, "project_name": project.name, "categories": result}
 
 
 @router.get("/reports/date-bounds", dependencies=[Depends(require_report_viewer)])
