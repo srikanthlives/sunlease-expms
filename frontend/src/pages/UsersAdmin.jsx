@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, Button, Input, Select } from "../components/ui";
-import { Plus, X, KeyRound, ShieldCheck, ShieldOff, Pencil } from "lucide-react";
+import { Plus, X, KeyRound, ShieldCheck, ShieldOff, Pencil, AlertTriangle } from "lucide-react";
 
 export default function UsersAdmin() {
   const { user: me } = useAuth();
@@ -111,6 +111,8 @@ export default function UsersAdmin() {
           rows={roles}
         />
       </Card>
+
+      {isSuperAdmin && <DatabaseBackupCard />}
     </div>
   );
 }
@@ -353,6 +355,158 @@ function ResetPasswordModal({ user, onClose }) {
             {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
             <Button type="submit" disabled={busy} className="w-full">{busy ? "Resetting…" : "Reset Password"}</Button>
           </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DatabaseBackupCard() {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+  const [pendingFile, setPendingFile] = useState(null);
+  const [showRestore, setShowRestore] = useState(false);
+  const fileInputRef = useRef(null);
+
+  async function download() {
+    setDownloading(true);
+    setError("");
+    try {
+      const res = await client.get("/admin/db-backup", { responseType: "blob" });
+      const disposition = res.headers["content-disposition"] || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match ? match[1] : `expms-backup-${new Date().toISOString().slice(0, 10)}.db`;
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // responseType: "blob" means even a JSON error body arrives as a Blob,
+      // so apiErrorMessage's err.response.data.detail lookup would miss it -
+      // decode it back to text first.
+      if (err?.response?.data instanceof Blob && err.response.data.type.includes("json")) {
+        try {
+          const text = await err.response.data.text();
+          setError(JSON.parse(text).detail || apiErrorMessage(err));
+        } catch {
+          setError(apiErrorMessage(err));
+        }
+      } else {
+        setError(apiErrorMessage(err));
+      }
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function handleFileSelected(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    setPendingFile(file);
+    setShowRestore(true);
+  }
+
+  return (
+    <Card>
+      <h2 className="font-display font-semibold text-lg mb-1">Database Backup &amp; Restore</h2>
+      <p className="text-xs text-ink/50 mb-4">
+        Download a full copy of the live database, or replace it with a previously downloaded backup. Useful on
+        platforms like Railway with no direct file access to the mounted volume.
+      </p>
+      {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2 mb-3">{error}</div>}
+      <div className="flex gap-2">
+        <Button type="button" onClick={download} disabled={downloading}>
+          {downloading ? "Preparing…" : "Download Backup"}
+        </Button>
+        <input ref={fileInputRef} type="file" accept=".db,.sqlite,.sqlite3" className="hidden" onChange={handleFileSelected} />
+        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+          Upload &amp; Restore…
+        </Button>
+      </div>
+      {showRestore && pendingFile && (
+        <RestoreConfirmModal
+          file={pendingFile}
+          onClose={() => { setShowRestore(false); setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+        />
+      )}
+    </Card>
+  );
+}
+
+function RestoreConfirmModal({ file, onClose }) {
+  const [step, setStep] = useState(1);
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("confirm", confirmText);
+      await client.post("/admin/db-restore", form, { headers: { "Content-Type": "multipart/form-data" } });
+      setDone(true);
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-ink/50 z-40 flex items-center justify-center p-4" onClick={busy ? undefined : onClose}>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md p-5 relative" onClick={(e) => e.stopPropagation()}>
+        {!busy && <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>}
+        <div className="flex items-center gap-2 mb-2 text-danger">
+          <AlertTriangle size={18} />
+          <h3 className="font-display font-semibold text-lg">
+            {done ? "Database restored" : step === 1 ? "Replace the live database?" : "Type REPLACE to confirm"}
+          </h3>
+        </div>
+
+        {done ? (
+          <>
+            <p className="text-sm text-ink/60 mb-5">
+              The database has been replaced with <span className="font-medium text-ink/80">{file.name}</span>. A
+              backup of the previous database was saved alongside it on the server.
+            </p>
+            <Button type="button" onClick={onClose} className="w-full">Close</Button>
+          </>
+        ) : step === 1 ? (
+          <>
+            <p className="text-sm text-ink/60 mb-5">
+              This will overwrite the entire live database with <span className="font-medium text-ink/80">{file.name}</span>.
+              Every expense, invoice, payment, and claim currently in the app will be replaced by whatever was in that
+              file at the time it was downloaded. This cannot be undone from the app itself.
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="danger" onClick={() => setStep(2)} className="flex-1">Continue</Button>
+              <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ink/60 mb-3">
+              Last chance - type <span className="font-mono font-semibold text-ink">REPLACE</span> below to actually
+              overwrite the database.
+            </p>
+            <Input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="REPLACE" autoFocus />
+            {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2 mt-3">{error}</div>}
+            <div className="flex gap-2 mt-4">
+              <Button type="button" variant="danger" disabled={busy || confirmText !== "REPLACE"} onClick={submit} className="flex-1">
+                {busy ? "Restoring…" : "Permanently replace database"}
+              </Button>
+              <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
+            </div>
+          </>
         )}
       </div>
     </div>
