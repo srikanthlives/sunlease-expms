@@ -2,6 +2,7 @@ import os
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -14,6 +15,19 @@ from app.services.document_service import save_upload
 from app.services.storage import get_storage
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
+
+
+def _category_folder(document_type: str) -> str:
+    """Top-level storage folder for a document type - configurable via
+    EXPMS_DOCUMENT_FOLDER_* env vars (see core/config.py) so the layout can
+    be renamed/reorganized without a code change."""
+    return {
+        DocumentType.EXPENSE: settings.DOCUMENT_FOLDER_EXPENSE,
+        DocumentType.INVOICE: settings.DOCUMENT_FOLDER_INVOICE,
+        DocumentType.PAYMENT: settings.DOCUMENT_FOLDER_PAYMENT,
+        DocumentType.CLAIM: settings.DOCUMENT_FOLDER_CLAIM,
+        DocumentType.CLAIM_LINE: settings.DOCUMENT_FOLDER_CLAIM,
+    }.get(document_type, "misc")
 
 
 def _claim_for_document_link(db: Session, claim_id: int | None, claim_line_id: int | None) -> EmployeeClaim | None:
@@ -62,7 +76,8 @@ async def upload_document(
     # Get project code for folder organization
     project_code = "default"
     project_id = None
-    
+    claim = None
+
     # Determine project_id from the linked entity
     if expense_id:
         expense = db.query(Expense).filter(Expense.id == expense_id).first()
@@ -89,7 +104,13 @@ async def upload_document(
         if project:
             project_code = project.code
 
-    meta = await save_upload(db, file, uploaded_by=user.id, project_code=project_code)
+    category = _category_folder(document_type)
+    # Employee claim attachments are grouped by claim, not upload date - a
+    # claim's overall attachment and every line's proof end up in the same
+    # folder, keyed by claim number, so everything for one claim is in one
+    # place regardless of when each file was added or resubmitted.
+    subdir_override = f"{category}/{project_code}/{claim.claim_number}" if claim else None
+    meta = await save_upload(db, file, uploaded_by=user.id, project_code=project_code, category=category, subdir_override=subdir_override)
     doc = Document(
         expense_id=expense_id, claim_id=claim_id, claim_line_id=claim_line_id, invoice_id=invoice_id,
         payment_id=payment_id, document_type=document_type, uploaded_by=user.id, **meta,
@@ -117,6 +138,17 @@ def list_by_entity(
         q = q.filter(Document.invoice_id == invoice_id)
     if payment_id:
         q = q.filter(Document.payment_id == payment_id)
+    return q.order_by(Document.id.desc()).all()
+
+
+@router.get("/for-claim/{claim_id}", response_model=list[DocumentOut])
+def list_claim_documents(claim_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Every document tied to a claim, whether attached to the claim
+    overall or to one of its lines - used for the read-only combined view
+    on the Expenses page (a claim's consolidated expense links back to the
+    whole claim, not any one line)."""
+    line_ids = [row[0] for row in db.query(EmployeeClaimLine.id).filter(EmployeeClaimLine.claim_id == claim_id).all()]
+    q = db.query(Document).filter(or_(Document.claim_id == claim_id, Document.claim_line_id.in_(line_ids) if line_ids else False))
     return q.order_by(Document.id.desc()).all()
 
 

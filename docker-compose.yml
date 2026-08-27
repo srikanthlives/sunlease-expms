@@ -26,6 +26,12 @@ services:
       EXPMS_R2_ENDPOINT_URL: ${EXPMS_R2_ENDPOINT_URL:-}
       EXPMS_R2_PREFIX: ${EXPMS_R2_PREFIX:-SUNLEASE}
 
+      # Top-level folder each document type is stored under (see DEPLOYMENT.md)
+      EXPMS_DOCUMENT_FOLDER_EXPENSE: ${EXPMS_DOCUMENT_FOLDER_EXPENSE:-expenses}
+      EXPMS_DOCUMENT_FOLDER_INVOICE: ${EXPMS_DOCUMENT_FOLDER_INVOICE:-invoices}
+      EXPMS_DOCUMENT_FOLDER_PAYMENT: ${EXPMS_DOCUMENT_FOLDER_PAYMENT:-payments}
+      EXPMS_DOCUMENT_FOLDER_CLAIM: ${EXPMS_DOCUMENT_FOLDER_CLAIM:-employee-claims}
+
     volumes:
       - ./data:/data
 

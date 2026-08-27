@@ -15,8 +15,11 @@ class StorageBackend(ABC):
     """Abstract base class for storage backends."""
     
     @abstractmethod
-    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default") -> dict:
-        """Save file and return metadata."""
+    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
+        """Save file and return metadata. `subdir_override`, when given,
+        replaces the usual <category>/<project>/<year>/<month>/W<week> path
+        entirely (e.g. grouping employee claim attachments by claim id
+        instead of upload date)."""
         pass
     
     @abstractmethod
@@ -42,11 +45,15 @@ class LocalStorageBackend(StorageBackend):
         self.upload_dir = settings.UPLOAD_DIR
         os.makedirs(self.upload_dir, exist_ok=True)
     
-    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default") -> dict:
-        """Save file to local filesystem organized by project/year/month/week."""
-        now = dt.datetime.utcnow()
-        iso_year, iso_week, _ = now.isocalendar()
-        subdir = f"{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
+    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
+        """Save file to local filesystem organized by document category/project/year/month/week
+        (or by `subdir_override` verbatim, when given)."""
+        if subdir_override is not None:
+            subdir = subdir_override
+        else:
+            now = dt.datetime.utcnow()
+            iso_year, iso_week, _ = now.isocalendar()
+            subdir = f"{category}/{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
         dir_path = os.path.join(self.upload_dir, subdir)
         os.makedirs(dir_path, exist_ok=True)
         
@@ -122,11 +129,15 @@ class R2StorageBackend(StorageBackend):
     def _key(self, relative_key: str) -> str:
         return f"{self.prefix}/{relative_key}" if self.prefix else relative_key
 
-    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default") -> dict:
-        """Save file to R2 organized by SUNLEASE/project/YYYY/MM/WXXX."""
-        now = dt.datetime.utcnow()
-        iso_year, iso_week, _ = now.isocalendar()
-        subdir = f"{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
+    async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
+        """Save file to R2 organized by SUNLEASE/category/project/YYYY/MM/WXXX
+        (or by `subdir_override` verbatim, when given)."""
+        if subdir_override is not None:
+            subdir = subdir_override
+        else:
+            now = dt.datetime.utcnow()
+            iso_year, iso_week, _ = now.isocalendar()
+            subdir = f"{category}/{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
         relative_key = f"{subdir}/{os.path.basename(stored_filename)}"
         key = self._key(relative_key)
 

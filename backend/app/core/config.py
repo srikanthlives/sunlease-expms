@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     
     # File upload restrictions
     MAX_UPLOAD_SIZE_MB: int = int(os.environ.get("EXPMS_MAX_UPLOAD_SIZE_MB", "15"))
+
+    # Top-level folder each document type is stored under (see
+    # services/storage.py) - <folder>/<project-code>/<YYYY>/<MM>/W<week>/<uuid4>.<ext>,
+    # under either the local upload dir or the R2 prefix. Override any of
+    # these to rename/relocate that category without touching code; existing
+    # files already on disk/R2 are unaffected (only new uploads use it).
+    DOCUMENT_FOLDER_EXPENSE: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_EXPENSE", "expenses")
+    DOCUMENT_FOLDER_INVOICE: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_INVOICE", "invoices")
+    DOCUMENT_FOLDER_PAYMENT: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_PAYMENT", "payments")
+    # Used for both CLAIM (overall claim attachment) and CLAIM_LINE (per-line proof).
+    DOCUMENT_FOLDER_CLAIM: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_CLAIM", "employee-claims")
     
     # Parse comma-separated extension list
     # NOTE: no type annotation on these three - they're computed here in plain

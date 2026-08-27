@@ -175,12 +175,14 @@ export default function Expenses() {
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             {
               key: "attachments", header: "Proof / Bill",
-              render: (r) => (
-                <Attachments
-                  documentType="EXPENSE" expenseId={r.id} compact
-                  label={r.source_type === "INVOICE" ? "Invoice/Bill" : r.source_type === "EMPLOYEE_CLAIM" ? "Proof" : "Attach"}
-                />
-              ),
+              render: (r) =>
+                r.source_type === "INVOICE" ? (
+                  <Attachments documentType="INVOICE" invoiceId={r.source_id} compact readOnly label="Bill" />
+                ) : r.source_type === "EMPLOYEE_CLAIM" ? (
+                  <Attachments claimFullId={r.source_id} compact readOnly label="Proof" />
+                ) : (
+                  <Attachments documentType="EXPENSE" expenseId={r.id} compact label="Attach" />
+                ),
             },
             ...(canEdit ? [{
               key: "__edit", header: "",

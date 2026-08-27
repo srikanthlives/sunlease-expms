@@ -22,11 +22,12 @@ def _unique_dest_path(ext: str) -> str:
     return f"{uuid.uuid4().hex}{ext}"
 
 
-async def save_upload(db, file: UploadFile, *, uploaded_by: int, project_code: str = "default") -> dict:
+async def save_upload(db, file: UploadFile, *, uploaded_by: int, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
     """Validates MIME/extension/size, saves to configured storage backend, and
     returns metadata for a Document row. Does not create the Document row
-    itself - caller links it to the right entity. Organizes files by project
-    folder, year, month, and week."""
+    itself - caller links it to the right entity. Organizes files by
+    document category, project, year, month, and week - unless
+    `subdir_override` is given, which replaces that whole scheme verbatim."""
     ext = _safe_extension(file.filename)
     if file.content_type not in settings.ALLOWED_UPLOAD_MIME_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"MIME type '{file.content_type}' is not allowed")
@@ -43,7 +44,7 @@ async def save_upload(db, file: UploadFile, *, uploaded_by: int, project_code: s
     
     # Save using configured storage backend with project folder organization
     storage = get_storage()
-    storage_result = await storage.save_file(contents, stored_filename, project_code=project_code)
+    storage_result = await storage.save_file(contents, stored_filename, project_code=project_code, category=category, subdir_override=subdir_override)
     
     return {
         "original_filename": file.filename,

@@ -7,9 +7,14 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
  * Attach & preview documents (invoices/bills, payment receipts, employee
  * proof screenshots) against any entity. Pass exactly one of expenseId /
  * invoiceId / paymentId / claimId / claimLineId, matching `documentType`.
+ *
+ * Pass `claimFullId` instead (with `readOnly`) for a combined read-only view
+ * of every document tied to a claim - both its overall attachment and every
+ * line's proof - used on the Expenses page for a claim-sourced expense,
+ * where there's no single claim_line_id to point at.
  */
 export default function Attachments({
-  documentType, expenseId, invoiceId, paymentId, claimId, claimLineId,
+  documentType, expenseId, invoiceId, paymentId, claimId, claimLineId, claimFullId,
   label = "Attachments", compact = false, readOnly = false,
 }) {
   const [open, setOpen] = useState(false);
@@ -27,9 +32,10 @@ export default function Attachments({
 
   function load() {
     setLoading(true);
-    client.get("/documents/by-entity", { params: entityParams })
-      .then((res) => setDocs(res.data))
-      .finally(() => setLoading(false));
+    const req = claimFullId
+      ? client.get(`/documents/for-claim/${claimFullId}`)
+      : client.get("/documents/by-entity", { params: entityParams });
+    req.then((res) => setDocs(res.data)).finally(() => setLoading(false));
   }
 
   useEffect(() => {
@@ -93,7 +99,7 @@ export default function Attachments({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        className={`relative inline-flex items-center gap-1.5 text-xs font-medium rounded-md border border-ink/15 hover:bg-brand-50 ${compact ? "px-2 py-1" : "px-2.5 py-1.5"}`}
+        className={`relative inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium rounded-md border border-ink/15 hover:bg-brand-50 ${compact ? "px-2 py-1" : "px-2.5 py-1.5"}`}
       >
         <Paperclip size={13} /> {label}
         {docs.length > 0 && (

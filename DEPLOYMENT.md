@@ -16,6 +16,10 @@ without Docker, see [README.md](./README.md).
 | `EXPMS_R2_SECRET_ACCESS_KEY` | *(empty)* | R2 API token secret |
 | `EXPMS_R2_BUCKET_NAME` | *(empty)* | Target bucket |
 | `EXPMS_R2_PREFIX` | `SUNLEASE` | Root key prefix all uploads are stored under in the bucket |
+| `EXPMS_DOCUMENT_FOLDER_EXPENSE` | `expenses` | Top-level folder for direct-expense attachments |
+| `EXPMS_DOCUMENT_FOLDER_INVOICE` | `invoices` | Top-level folder for invoice attachments |
+| `EXPMS_DOCUMENT_FOLDER_PAYMENT` | `payments` | Top-level folder for payment receipts |
+| `EXPMS_DOCUMENT_FOLDER_CLAIM` | `employee-claims` | Top-level folder for employee claim attachments (overall + per-line proof) |
 | `EXPMS_MAX_UPLOAD_SIZE_MB` | `15` | |
 | `EXPMS_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
 
@@ -60,9 +64,21 @@ docker run -p 8000:8000 \
 
 ## Storage backends
 
-Files are organized as `<project-code>/<year>/<month>/W<week>/<uuid4>.<ext>`
+Files are organized as
+`<document-folder>/<project-code>/<year>/<month>/W<week>/<uuid4>.<ext>`
 under either the local upload dir or, for R2, under the `EXPMS_R2_PREFIX`
-root folder in the bucket — same layout either way.
+root folder in the bucket — same layout either way. `<document-folder>` is
+one of the `EXPMS_DOCUMENT_FOLDER_*` variables above, chosen by the
+attachment's type (expense/invoice/payment/employee claim). Rename any of
+those variables to relocate that category; it only affects new uploads,
+existing files stay where they are.
+
+**Employee claims are the one exception**: instead of the date/week scheme,
+their attachments are grouped by claim number -
+`employee-claims/<project-code>/<claim-number>/<uuid4>.<ext>` - so the
+overall claim attachment and every line's proof photo, however many times
+the claim is edited or resubmitted, always land in one folder together
+(e.g. `employee-claims/PA1/CLM-2600010/<uuid4>.jpg`).
 
 ### Local (default, good for dev / single-server deployments)
 
