@@ -46,14 +46,14 @@ class LocalStorageBackend(StorageBackend):
         os.makedirs(self.upload_dir, exist_ok=True)
     
     async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
-        """Save file to local filesystem organized by document category/project/year/month/week
+        """Save file to local filesystem organized by project/document-category/year/month/week
         (or by `subdir_override` verbatim, when given)."""
         if subdir_override is not None:
             subdir = subdir_override
         else:
             now = dt.datetime.utcnow()
             iso_year, iso_week, _ = now.isocalendar()
-            subdir = f"{category}/{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
+            subdir = f"{project_code}/{category}/{now.year}/{now.month:02d}/W{iso_week:02d}"
         dir_path = os.path.join(self.upload_dir, subdir)
         os.makedirs(dir_path, exist_ok=True)
         
@@ -130,14 +130,14 @@ class R2StorageBackend(StorageBackend):
         return f"{self.prefix}/{relative_key}" if self.prefix else relative_key
 
     async def save_file(self, file_content: bytes, stored_filename: str, project_code: str = "default", category: str = "misc", subdir_override: str | None = None) -> dict:
-        """Save file to R2 organized by SUNLEASE/category/project/YYYY/MM/WXXX
+        """Save file to R2 organized by SUNLEASE/project/category/YYYY/MM/WXXX
         (or by `subdir_override` verbatim, when given)."""
         if subdir_override is not None:
             subdir = subdir_override
         else:
             now = dt.datetime.utcnow()
             iso_year, iso_week, _ = now.isocalendar()
-            subdir = f"{category}/{project_code}/{now.year}/{now.month:02d}/W{iso_week:02d}"
+            subdir = f"{project_code}/{category}/{now.year}/{now.month:02d}/W{iso_week:02d}"
         relative_key = f"{subdir}/{os.path.basename(stored_filename)}"
         key = self._key(relative_key)
 

@@ -65,20 +65,21 @@ docker run -p 8000:8000 \
 ## Storage backends
 
 Files are organized as
-`<document-folder>/<project-code>/<year>/<month>/W<week>/<uuid4>.<ext>`
+`<project-code>/<document-folder>/<year>/<month>/W<week>/<uuid4>.<ext>`
 under either the local upload dir or, for R2, under the `EXPMS_R2_PREFIX`
-root folder in the bucket — same layout either way. `<document-folder>` is
-one of the `EXPMS_DOCUMENT_FOLDER_*` variables above, chosen by the
-attachment's type (expense/invoice/payment/employee claim). Rename any of
-those variables to relocate that category; it only affects new uploads,
-existing files stay where they are.
+root folder in the bucket — same layout either way. Project is the
+top-level folder, so everything for one project lives together; within it,
+`<document-folder>` is one of the `EXPMS_DOCUMENT_FOLDER_*` variables above,
+chosen by the attachment's type (expense/invoice/payment/employee claim).
+Rename any of those variables to relocate that category; it only affects
+new uploads, existing files stay where they are.
 
 **Employee claims are the one exception**: instead of the date/week scheme,
 their attachments are grouped by claim number -
-`employee-claims/<project-code>/<claim-number>/<uuid4>.<ext>` - so the
+`<project-code>/employee-claims/<claim-number>/<uuid4>.<ext>` - so the
 overall claim attachment and every line's proof photo, however many times
 the claim is edited or resubmitted, always land in one folder together
-(e.g. `employee-claims/PA1/CLM-2600010/<uuid4>.jpg`).
+(e.g. `PA1/employee-claims/CLM-2600010/<uuid4>.jpg`).
 
 ### Local (default, good for dev / single-server deployments)
 

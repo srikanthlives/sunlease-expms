@@ -109,7 +109,7 @@ async def upload_document(
     # claim's overall attachment and every line's proof end up in the same
     # folder, keyed by claim number, so everything for one claim is in one
     # place regardless of when each file was added or resubmitted.
-    subdir_override = f"{category}/{project_code}/{claim.claim_number}" if claim else None
+    subdir_override = f"{project_code}/{category}/{claim.claim_number}" if claim else None
     meta = await save_upload(db, file, uploaded_by=user.id, project_code=project_code, category=category, subdir_override=subdir_override)
     doc = Document(
         expense_id=expense_id, claim_id=claim_id, claim_line_id=claim_line_id, invoice_id=invoice_id,
