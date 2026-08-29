@@ -41,6 +41,22 @@ def _money(v) -> str:
     return f"Rs. {float(v or 0):,.2f}"
 
 
+def _truncate_to_width(c: canvas.Canvas, text: str, font: str, size: float, max_width: float) -> str:
+    """Truncate text (with an ellipsis) so it never overlaps whatever is
+    drawn next to it - a fixed character-count cutoff let long employee
+    names run into the adjacent column's label."""
+    if c.stringWidth(text, font, size) <= max_width:
+        return text
+    ellipsis = "..."
+    ell_w = c.stringWidth(ellipsis, font, size)
+    truncated = ""
+    for ch in text:
+        if c.stringWidth(truncated + ch, font, size) + ell_w > max_width:
+            break
+        truncated += ch
+    return truncated + ellipsis
+
+
 def _col_x():
     x = MARGIN_X
     xs = {}
@@ -50,7 +66,7 @@ def _col_x():
     return xs
 
 
-def _build_summary_pdf(claim: EmployeeClaim, lines_with_proof: set[int]) -> tuple[bytes, list[dict]]:
+def _build_summary_pdf(claim: EmployeeClaim, proof_count_by_line: dict[int, int]) -> tuple[bytes, list[dict]]:
     """Returns (pdf_bytes, proof_boxes) - proof_boxes is a list of
     {"local_page": int, "rect": (x0,y0,x1,y1), "line_id": int} for every
     line that has at least one attachment, so the caller can turn each into
@@ -100,14 +116,21 @@ def _build_summary_pdf(claim: EmployeeClaim, lines_with_proof: set[int]) -> tupl
         ("Claim Date", str(claim.claim_date), "Project", project_name),
         ("Overall Head", category_name, "Total Amount", _money(claim.total_amount)),
     ]
+    label1_x = MARGIN_X
+    val1_x = MARGIN_X + 3.2 * cm
+    label2_x = MARGIN_X + 10.2 * cm
+    val2_x = MARGIN_X + 13.4 * cm
+    val1_max_w = label2_x - val1_x - 0.3 * cm
+    val2_max_w = (MARGIN_X + content_width) - val2_x
+
     c.setFont("Helvetica", 9)
     for label1, val1, label2, val2 in meta_rows:
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(MARGIN_X, y - 10, label1)
-        c.drawString(MARGIN_X + 5.5 * cm, y - 10, label2)
+        c.drawString(label1_x, y - 10, label1)
+        c.drawString(label2_x, y - 10, label2)
         c.setFont("Helvetica", 9)
-        c.drawString(MARGIN_X + 3.2 * cm, y - 10, str(val1)[:60])
-        c.drawString(MARGIN_X + 8.7 * cm, y - 10, str(val2)[:40])
+        c.drawString(val1_x, y - 10, _truncate_to_width(c, str(val1), "Helvetica", 9, val1_max_w))
+        c.drawString(val2_x, y - 10, _truncate_to_width(c, str(val2), "Helvetica", 9, val2_max_w))
         y -= 18
     y -= 8
 
@@ -170,10 +193,11 @@ def _build_summary_pdf(claim: EmployeeClaim, lines_with_proof: set[int]) -> tupl
         c.drawString(cols["date"] + 3, row_top - 12, str(line.expense_date))
         c.drawRightString(cols["amount"] + COL_WIDTHS["amount"] - 4, row_top - 12, _money(line.amount))
 
-        if line.id in lines_with_proof:
+        proof_count = proof_count_by_line.get(line.id, 0)
+        if proof_count > 0:
             c.setFillColor(colors.HexColor("#1d4ed8"))
             c.setFont("Helvetica-Bold", 8)
-            proof_label = "View Proof →"
+            proof_label = f"View Proof ({proof_count}) →" if proof_count > 1 else "View Proof →"
             c.drawString(cols["proof"] + 3, row_top - 12, proof_label)
             c.setFillColor(colors.black)
             label_w = c.stringWidth(proof_label, "Helvetica-Bold", 8)
@@ -266,13 +290,15 @@ async def build_claim_pdf(db: Session, claim: EmployeeClaim) -> bytes:
     line_ids = list(line_number_by_id.keys())
     line_docs = db.query(Document).filter(Document.claim_line_id.in_(line_ids)).order_by(Document.id).all() if line_ids else []
 
-    # The first (lowest-id) attachment per line is what "View Proof" jumps to.
+    # The first (lowest-id) attachment per line is what "View Proof" jumps to;
+    # the count of all attachments per line is shown in the link label.
     first_doc_by_line = {}
+    proof_count_by_line: dict[int, int] = {}
     for d in line_docs:
         first_doc_by_line.setdefault(d.claim_line_id, d)
-    lines_with_proof = set(first_doc_by_line.keys())
+        proof_count_by_line[d.claim_line_id] = proof_count_by_line.get(d.claim_line_id, 0) + 1
 
-    summary_bytes, proof_boxes = _build_summary_pdf(claim, lines_with_proof)
+    summary_bytes, proof_boxes = _build_summary_pdf(claim, proof_count_by_line)
     for page in PdfReader(BytesIO(summary_bytes)).pages:
         writer.add_page(page)
 
