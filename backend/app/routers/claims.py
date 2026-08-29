@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -7,7 +8,7 @@ from app.db.session import get_db
 from app.models.models import EmployeeClaim, Employee, Project, User
 from app.models.enums import ClaimStatus, RoleName
 from app.schemas.transactions import ClaimCreate, ClaimUpdate, ClaimOut, RejectRequest
-from app.services import claim_service, project_scope_service
+from app.services import claim_service, project_scope_service, claim_pdf_service
 
 router = APIRouter(prefix="/api/v1/claims", tags=["claims"])
 
@@ -128,6 +129,23 @@ def get_claim(claim_id: int, db: Session = Depends(get_db), user: User = Depends
     if not _can_view(db, c, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this claim")
     return c
+
+
+@router.get("/{claim_id}/download-pdf")
+async def download_claim_pdf(claim_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """A single PDF: claim summary page, then one page per attachment
+    (overall claim proof + every line's proof) - a complete copy of the
+    claim an employee (or reviewer) can keep or file for reimbursement."""
+    c = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_id).first()
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
+    if not _can_view(db, c, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this claim")
+    pdf_bytes = await claim_pdf_service.build_claim_pdf(db, c)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{c.claim_number}.pdf"'},
+    )
 
 
 @router.put("/{claim_id}", response_model=ClaimOut)

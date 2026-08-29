@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate } from "../components/ui";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Trash2, Pencil } from "lucide-react";
+import { Plus, X, Trash2, Pencil, FileDown } from "lucide-react";
 
 export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const { user } = useAuth();
@@ -74,6 +74,7 @@ export function ClaimDetail() {
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const navigate = useNavigate();
 
   function load() { client.get(`/claims/${id}`).then((res) => setClaim(res.data)); }
@@ -118,6 +119,35 @@ export function ClaimDetail() {
     }
   }
 
+  async function downloadPdf() {
+    setDownloadingPdf(true);
+    setError("");
+    try {
+      const res = await client.get(`/claims/${id}/download-pdf`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${claim.claim_number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      if (err?.response?.data instanceof Blob && err.response.data.type.includes("json")) {
+        try {
+          const text = await err.response.data.text();
+          setError(JSON.parse(text).detail || apiErrorMessage(err));
+        } catch {
+          setError(apiErrorMessage(err));
+        }
+      } else {
+        setError(apiErrorMessage(err));
+      }
+    } finally {
+      setDownloadingPdf(false);
+    }
+  }
+
   return (
     <div className="space-y-6 w-full">
       <Link to="/claims" className="text-sm text-brand-600 hover:underline">← Back to claims</Link>
@@ -126,7 +156,12 @@ export function ClaimDetail() {
           <h1 className="text-2xl font-display font-semibold">{claim.claim_number}</h1>
           <p className="text-sm text-ink/50 mt-0.5">{empName} · {formatDate(claim.claim_date)} · {categoryName}</p>
         </div>
-        <StatusBadge status={claim.status} />
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="outline" onClick={downloadPdf} disabled={downloadingPdf}>
+            <FileDown size={15} /> {downloadingPdf ? "Preparing…" : "Download PDF"}
+          </Button>
+          <StatusBadge status={claim.status} />
+        </div>
       </div>
 
       {stageLabel && (

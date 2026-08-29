@@ -12,3 +12,12 @@ python-dateutil==2.8.2
 # Cloudflare R2 Storage (optional, only needed if EXPMS_STORAGE_TYPE=r2) -
 # R2 is S3-compatible, so the standard AWS SDK talks to it via a custom endpoint.
 boto3==1.34.162
+
+# Claim PDF export (services/claim_pdf_service.py) - reportlab builds the
+# summary page and turns each image attachment into its own page; pypdf
+# merges those with any already-PDF attachments (bills/invoices/receipts
+# saved as PDF) into one combined document; Pillow is reportlab's image
+# backend for embedding JPEG/PNG/WEBP proofs.
+reportlab==4.2.5
+pypdf==5.1.0
+Pillow==10.4.0
