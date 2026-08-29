@@ -72,13 +72,23 @@ def _build_summary_pdf(claim: EmployeeClaim) -> bytes:
         story.append(Spacer(1, 0.4 * cm))
 
     story.append(Paragraph("Expense Lines", styles["Heading3"]))
+    # Plain strings in a Table cell don't wrap - a long description just
+    # overflows and visually overlaps the next column. Wrapping it in a
+    # Paragraph makes the cell (and the row) grow to fit the text instead.
+    cell_style = styles["Normal"].clone("cell")
+    cell_style.fontSize = 8
+    cell_style.leading = 10
+
+    def _cell(text):
+        return Paragraph(text, cell_style)
+
     line_rows = [["#", "Date", "Head", "Sub-Head", "Description", "Amount"]]
     for i, line in enumerate(claim.lines, start=1):
         line_rows.append([
             str(i), str(line.expense_date),
-            line.expense_head.name if line.expense_head else "-",
-            line.expense_sub_head.name if line.expense_sub_head else "-",
-            line.description or "-",
+            _cell(line.expense_head.name if line.expense_head else "-"),
+            _cell(line.expense_sub_head.name if line.expense_sub_head else "-"),
+            _cell(line.description or "-"),
             _money(line.amount),
         ])
     line_rows.append(["", "", "", "", "Total", _money(claim.total_amount)])
