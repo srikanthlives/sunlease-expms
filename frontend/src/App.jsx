@@ -19,6 +19,7 @@ import UsersAdmin from "./pages/UsersAdmin";
 import EditRequests from "./pages/EditRequests";
 import RecurringExpenses from "./pages/RecurringExpenses";
 import RecurringExpenseApprovals from "./pages/RecurringExpenseApprovals";
+import BulkImport from "./pages/BulkImport";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="edit-requests" element={<EditRequests />} />
             <Route path="recurring-expenses" element={<RecurringExpenses />} />
             <Route path="recurring-expenses/approvals" element={<RecurringExpenseApprovals />} />
+            <Route path="bulk-import" element={<BulkImport />} />
           </Route>
         </Routes>
       </AuthProvider>

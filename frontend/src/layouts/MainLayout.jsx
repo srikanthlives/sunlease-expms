@@ -6,7 +6,7 @@ import logoIcon from "../assets/logo_icon.png";
 import {
   LayoutDashboard, Receipt, FileText, Wallet, ClipboardList, CheckSquare,
   BarChart3, Users, Building2, Landmark, Tag, Tags, ShieldCheck, LogOut, ScrollText, UserCog, FileEdit,
-  ChevronsLeft, ChevronsRight, Repeat,
+  ChevronsLeft, ChevronsRight, Repeat, UploadCloud,
 } from "lucide-react";
 
 const COLLAPSE_KEY = "expms_sidebar_collapsed";
@@ -22,6 +22,7 @@ const NAV = [
       { to: "/payments", label: "Payments", icon: Wallet },
       { to: "/claims", label: "Employee Claims", icon: ClipboardList },
       { to: "/recurring-expenses", label: "Recurring Expenses", icon: Repeat },
+      { to: "/bulk-import", label: "Bulk Import", icon: UploadCloud, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"] },
     ],
   },
   {

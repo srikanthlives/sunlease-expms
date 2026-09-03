@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 from app.models import __init__ as _models  # noqa: F401  (ensures models are registered)
 from app.migrate import migrate
-from app.routers import auth, masters, expenses, invoices, payments, claims, documents, dashboard, admin, edit_requests, recurring_expenses
+from app.routers import auth, masters, expenses, invoices, payments, claims, documents, dashboard, admin, edit_requests, recurring_expenses, bulk_import
 
 # Additive auto-migration: creates any missing tables/columns without
 # touching existing data. See app/migrate.py for exactly what this does
@@ -49,6 +49,7 @@ app.include_router(dashboard.router)
 app.include_router(admin.router)
 app.include_router(edit_requests.router)
 app.include_router(recurring_expenses.router)
+app.include_router(bulk_import.router)
 
 
 @app.get("/api/v1/health")
