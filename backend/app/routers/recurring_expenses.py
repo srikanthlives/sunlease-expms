@@ -154,7 +154,7 @@ def review_instance(instance_id: int, payload: InstanceReviewRequest, db: Sessio
     instance = db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.id == instance_id).first()
     if not instance:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
-    recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.bill_number, payload.remarks)
+    recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.bill_number, payload.description, payload.remarks)
     db.commit()
     db.refresh(instance)
     return _instance_to_out(instance)

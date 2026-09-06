@@ -13,6 +13,7 @@ export default function RecurringExpenseApprovals() {
   const [error, setError] = useState("");
   const [amounts, setAmounts] = useState({});
   const [billNumbers, setBillNumbers] = useState({});
+  const [descriptions, setDescriptions] = useState({});
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -24,9 +25,11 @@ export default function RecurringExpenseApprovals() {
     try {
       const amt = amounts[row.id];
       const billNo = billNumbers[row.id];
+      const desc = descriptions[row.id];
       await client.post(`/recurring-expenses/instances/${row.id}/accounts-review`, {
         amount: amt !== undefined && amt !== "" ? Number(amt) : null,
         bill_number: billNo !== undefined ? (billNo || null) : null,
+        description: desc !== undefined ? (desc || null) : null,
       });
       load();
     } catch (err) {
@@ -98,20 +101,29 @@ export default function RecurringExpenseApprovals() {
                       Bill date {formatDate(row.occurrence_date)}{row.due_date ? ` · Due ${formatDate(row.due_date)}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}
                     </div>
                     {needsAccounts ? (
-                      <div className="flex gap-3 max-w-md">
-                        <Input label={row.amount_type === "OPEN" ? "Enter Bill Amount" : "Amount (correct if changed)"}
-                          type="number" step="0.01"
-                          defaultValue={row.amount ?? ""}
-                          onChange={(e) => setAmounts((s) => ({ ...s, [row.id]: e.target.value }))} />
-                        <Input label="Voucher / Bill No"
-                          defaultValue={row.bill_number ?? ""}
-                          placeholder="e.g. from the physical bill"
-                          onChange={(e) => setBillNumbers((s) => ({ ...s, [row.id]: e.target.value }))} />
+                      <div className="space-y-3 max-w-md">
+                        <div className="flex gap-3">
+                          <Input label={row.amount_type === "OPEN" ? "Enter Bill Amount" : "Amount (correct if changed)"}
+                            type="number" step="0.01"
+                            defaultValue={row.amount ?? ""}
+                            onChange={(e) => setAmounts((s) => ({ ...s, [row.id]: e.target.value }))} />
+                          <Input label="Voucher / Bill No"
+                            defaultValue={row.bill_number ?? ""}
+                            placeholder="e.g. from the physical bill"
+                            onChange={(e) => setBillNumbers((s) => ({ ...s, [row.id]: e.target.value }))} />
+                        </div>
+                        <Input label="Description"
+                          defaultValue={row.description ?? ""}
+                          placeholder="Description that will be recorded on the Expense"
+                          onChange={(e) => setDescriptions((s) => ({ ...s, [row.id]: e.target.value }))} />
                       </div>
                     ) : (
-                      <div className="text-sm">
-                        <span className="font-medium">{formatMoney(row.amount)}</span>
-                        {row.bill_number && <span className="text-ink/50"> · Voucher/Bill No: {row.bill_number}</span>}
+                      <div className="text-sm space-y-0.5">
+                        <div>
+                          <span className="font-medium">{formatMoney(row.amount)}</span>
+                          {row.bill_number && <span className="text-ink/50"> · Voucher/Bill No: {row.bill_number}</span>}
+                        </div>
+                        {row.description && <div className="text-ink/50">{row.description}</div>}
                       </div>
                     )}
                   </div>

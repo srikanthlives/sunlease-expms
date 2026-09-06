@@ -76,12 +76,13 @@ def _assert_admin_reviewer(user: User):
 
 def accounts_review(
     db: Session, instance: RecurringExpenseInstance, actor: User, amount: Decimal | None,
-    bill_number: str | None = None, remarks: str | None = None,
+    bill_number: str | None = None, description: str | None = None, remarks: str | None = None,
 ) -> RecurringExpenseInstance:
     """Accounts fills in (OPEN type) or corrects (FIXED type) the actual bill
     amount, records the voucher/bill number off the physical bill (not known
     until now, since the recurring template is set up ahead of any actual
-    bill arriving), and sends it on to Admin for final approval."""
+    bill arriving), can adjust the description that will land on the
+    resulting Expense, and sends it on to Admin for final approval."""
     if instance.status != RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This instance is not awaiting Accounts review")
     _assert_accounts_reviewer(actor)
@@ -91,6 +92,8 @@ def accounts_review(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "An amount is required before this can go to Admin for approval")
     if bill_number is not None:
         instance.bill_number = bill_number
+    if description is not None:
+        instance.description = description
     instance.status = RecurringInstanceStatus.PENDING_ADMIN_APPROVAL
     instance.accounts_reviewed_by = actor.id
     instance.accounts_reviewed_at = dt.datetime.utcnow()

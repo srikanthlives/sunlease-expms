@@ -96,6 +96,7 @@ class RecurringExpenseInstanceOut(BaseModel):
 class InstanceReviewRequest(BaseModel):
     amount: Decimal | None = None
     bill_number: str | None = None
+    description: str | None = None
     remarks: str | None = None
 
 
