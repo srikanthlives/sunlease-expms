@@ -23,6 +23,9 @@ export default function Expenses() {
   const [bounds, setBounds] = useState(null);
   const [range, setRange] = useState({ from: "", to: "" });
   const [sourceType, setSourceType] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [subCategoryId, setSubCategoryId] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -39,6 +42,9 @@ export default function Expenses() {
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
     if (sourceType) params.source_type = sourceType;
+    if (projectId) params.project_id = projectId;
+    if (categoryId) params.category_id = categoryId;
+    if (subCategoryId) params.sub_category_id = subCategoryId;
     if (paymentStatus) params.payment_status = paymentStatus;
     return params;
   }
@@ -49,11 +55,13 @@ export default function Expenses() {
     client.get("/expenses", { params: listParams }).then((res) => setExpenses(res.data));
     client.get("/expenses/summary", { params: filterParams() }).then((res) => setSummary(res.data));
   }
-  useEffect(load, [range.from, range.to, sourceType, paymentStatus, page, pageSize, sort]);
+  useEffect(load, [range.from, range.to, sourceType, projectId, categoryId, subCategoryId, paymentStatus, page, pageSize, sort]);
   // Any filter or sort change should snap back to page 1 - a stale deep page
   // number against a smaller/differently-ordered result set would render an
   // empty or confusing table.
-  useEffect(() => { setPage(1); }, [range.from, range.to, sourceType, paymentStatus, pageSize, sort]);
+  useEffect(() => { setPage(1); }, [range.from, range.to, sourceType, projectId, categoryId, subCategoryId, paymentStatus, pageSize, sort]);
+  // Selecting a different Head clears any Sub-Head that no longer belongs to it.
+  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
 
   const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
@@ -102,6 +110,18 @@ export default function Expenses() {
           <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
             <option value="">All Sources</option>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+          </Select>
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">All Projects</option>
+            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">All Heads</option>
+            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+            <option value="">All Sub-Heads</option>
+            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
           <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
             <option value="">All Payment Statuses</option>

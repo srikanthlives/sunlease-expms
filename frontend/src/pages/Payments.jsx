@@ -21,6 +21,9 @@ export default function Payments() {
   const [accountId, setAccountId] = useState("");
   const [paymentMode, setPaymentMode] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [subCategoryId, setSubCategoryId] = useState("");
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
 
@@ -35,9 +38,14 @@ export default function Payments() {
     if (accountId) params.account_id = accountId;
     if (paymentMode) params.payment_mode = paymentMode;
     if (statusFilter) params.is_cancelled = statusFilter === "CANCELLED";
+    if (projectId) params.project_id = projectId;
+    if (categoryId) params.category_id = categoryId;
+    if (subCategoryId) params.sub_category_id = subCategoryId;
     client.get("/payments", { params }).then((res) => setPayments(res.data));
   }
-  useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter]);
+  useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId]);
+  // Selecting a different Head clears any Sub-Head that no longer belongs to it.
+  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
 
   function payeeOf(r) {
     if (r.vendor_id) { const v = masters.vendors.find((v) => v.id === r.vendor_id); return v ? vendorLabel(v) : "—"; }
@@ -68,6 +76,18 @@ export default function Payments() {
       <Card>
         <div className="flex flex-wrap items-end gap-4">
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">All Projects</option>
+            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">All Heads</option>
+            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+            <option value="">All Sub-Heads</option>
+            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
           <Select label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
             <option value="">All Accounts</option>
             {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}

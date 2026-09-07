@@ -1,9 +1,11 @@
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_accounts, require_non_employee, require_admin
 from app.db.session import get_db
-from app.models.models import Invoice, User
+from app.models.models import Invoice, Expense, User
 from app.schemas.transactions import InvoiceCreate, InvoiceOut, CancelRequest
 from app.schemas.edit_requests import InvoiceUpdate
 from app.services import invoice_service, edit_request_service, project_scope_service
@@ -41,12 +43,25 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: 
 
 
 @router.get("", response_model=list[InvoiceOut], dependencies=[Depends(require_non_employee)])
-def list_invoices(db: Session = Depends(get_db), user: User = Depends(get_current_user), vendor_id: int | None = None, project_id: int | None = None):
+def list_invoices(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
+    status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
     q = db.query(Invoice)
     if vendor_id:
         q = q.filter(Invoice.vendor_id == vendor_id)
     if project_id:
         q = q.filter(Invoice.project_id == project_id)
+    if status_:
+        q = q.filter(Invoice.status == status_)
+    if date_from:
+        q = q.filter(Invoice.invoice_date >= date_from)
+    if date_to:
+        q = q.filter(Invoice.invoice_date <= date_to)
+    if category_id:
+        # Category lives on the linked Expense, not Invoice itself.
+        q = q.join(Expense, Invoice.expense_id == Expense.id).filter(Expense.category_id == category_id)
     if user.role.name == RoleName.ACCOUNTS:
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)

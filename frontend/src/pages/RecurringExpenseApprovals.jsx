@@ -65,6 +65,8 @@ export default function RecurringExpenseApprovals() {
     return row.supplier_name || "—";
   };
   const projectName = (row) => masters.projects.find((p) => p.id === row.project_id)?.name || "—";
+  const categoryName = (row) => masters.categories.find((c) => c.id === row.category_id)?.name || "—";
+  const subCategoryName = (row) => masters.subCategories.find((s) => s.id === row.sub_category_id)?.name || null;
 
   if (masters.loading) return null;
 
@@ -99,6 +101,7 @@ export default function RecurringExpenseApprovals() {
                     </div>
                     <div className="text-xs text-ink/50 mb-2">
                       Bill date {formatDate(row.occurrence_date)}{row.due_date ? ` · Due ${formatDate(row.due_date)}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}
+                      {" · Head: "}{categoryName(row)}{subCategoryName(row) ? ` / ${subCategoryName(row)}` : ""}
                     </div>
                     {needsAccounts ? (
                       <div className="space-y-3 max-w-md">

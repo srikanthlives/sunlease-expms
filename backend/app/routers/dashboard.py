@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation, ExpenseCategory, ExpenseSubCategory
+from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation, ExpenseCategory, ExpenseSubCategory, Account
 from app.services.payment_status_service import get_paid_amount
 from app.services import project_scope_service
 
@@ -340,6 +340,127 @@ def project_category_breakdown(
         })
     result.sort(key=lambda n: n["total"], reverse=True)
     return {"project_id": project.id, "project_name": project.name, "categories": result}
+
+
+@router.get("/reports/expense-payment-mapping", dependencies=[Depends(require_report_viewer)])
+def expense_payment_mapping(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    source_type: str | None = None, payment_status: str | None = None,
+    date_from: str | None = None, date_to: str | None = None,
+):
+    """Tree view for reconciliation: each expense as the parent line, with
+    every payment that touched it listed underneath. A payment that was
+    split across several expenses (one payment paying off multiple bills at
+    once) shows up under each of them, flagged with how many expenses it
+    covers in total - so it's obvious from any single expense's row that its
+    payment wasn't exclusive to it."""
+    scope = project_scope_service.get_effective_project_scope(db, user)
+    if project_id and scope is not None and project_id not in scope:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned to this project")
+
+    q = db.query(Expense).filter(Expense.status == "ACTIVE")
+    if project_id:
+        q = q.filter(Expense.project_id == project_id)
+    elif scope is not None:
+        q = q.filter(Expense.project_id.in_(scope)) if scope else q.filter(False)
+    if category_id:
+        q = q.filter(Expense.category_id == category_id)
+    if sub_category_id:
+        q = q.filter(Expense.sub_category_id == sub_category_id)
+    if source_type:
+        q = q.filter(Expense.source_type == source_type)
+    if payment_status:
+        q = q.filter(Expense.payment_status == payment_status)
+    if date_from:
+        q = q.filter(Expense.expense_date >= date_from)
+    if date_to:
+        q = q.filter(Expense.expense_date <= date_to)
+    expenses = q.order_by(Expense.expense_date.desc(), Expense.id.desc()).limit(500).all()
+    if not expenses:
+        return []
+
+    expense_ids = [e.id for e in expenses]
+    allocations = (
+        db.query(PaymentAllocation)
+        .filter(PaymentAllocation.expense_id.in_(expense_ids))
+        .join(Payment, PaymentAllocation.payment_id == Payment.id)
+        .filter(Payment.is_cancelled == False)  # noqa: E712
+        .all()
+    )
+    payment_ids = {a.payment_id for a in allocations}
+    payments_by_id = {p.id: p for p in db.query(Payment).filter(Payment.id.in_(payment_ids)).all()} if payment_ids else {}
+    accounts_by_id = {a.id: a.account_name for a in db.query(Account).all()}
+
+    # For every payment touched here, the FULL set of expenses it's
+    # allocated against (in the whole system, not just this filtered page) -
+    # the basis for the "covers N expenses" flag and the "also paid: ..."
+    # list shown against each sibling expense.
+    payment_expenses: dict[int, list[dict]] = {}
+    if payment_ids:
+        sibling_rows = (
+            db.query(PaymentAllocation.payment_id, PaymentAllocation.expense_id, Expense.expense_number)
+            .join(Expense, PaymentAllocation.expense_id == Expense.id)
+            .filter(PaymentAllocation.payment_id.in_(payment_ids))
+            .all()
+        )
+        for pid, exp_id, exp_number in sibling_rows:
+            payment_expenses.setdefault(pid, []).append({"expense_id": exp_id, "expense_number": exp_number})
+    expense_counts_per_payment = {pid: len(v) for pid, v in payment_expenses.items()}
+
+    allocations_by_expense: dict[int, list] = {}
+    for a in allocations:
+        allocations_by_expense.setdefault(a.expense_id, []).append(a)
+
+    def payee_of(e: Expense) -> str:
+        if e.source_type == "INVOICE":
+            return e.vendor.vendor_name if e.vendor else "—"
+        if e.source_type == "EMPLOYEE_CLAIM":
+            return e.employee.employee_name if e.employee else "—"
+        return e.supplier_name or "—"
+
+    result = []
+    for e in expenses:
+        paid = get_paid_amount(db, e.id)
+        allocs = allocations_by_expense.get(e.id, [])
+        payment_rows = []
+        for a in allocs:
+            p = payments_by_id.get(a.payment_id)
+            if not p:
+                continue
+            covers = expense_counts_per_payment.get(p.id, 1)
+            others = [x["expense_number"] for x in payment_expenses.get(p.id, []) if x["expense_id"] != e.id]
+            payment_rows.append({
+                "payment_id": p.id,
+                "payment_number": p.payment_number,
+                "payment_date": str(p.payment_date),
+                "account_name": accounts_by_id.get(p.account_id, "—"),
+                "payment_mode": p.payment_mode,
+                "reference_number": p.reference_number,
+                "allocated_amount": _d(a.allocated_amount),
+                "payment_total_amount": _d(p.amount),
+                "covers_multiple_expenses": covers > 1,
+                "expenses_covered_count": covers,
+                "other_expense_numbers": others,
+            })
+        payment_rows.sort(key=lambda r: r["payment_date"], reverse=True)
+        result.append({
+            "expense_id": e.id,
+            "expense_number": e.expense_number,
+            "expense_date": str(e.expense_date),
+            "source_type": e.source_type,
+            "payee": payee_of(e),
+            "project_name": e.project.name if e.project else "—",
+            "category_name": e.category.name if e.category else "Uncategorised",
+            "sub_category_name": e.sub_category.name if e.sub_category else None,
+            "description": e.description,
+            "total_amount": _d(e.total_amount),
+            "paid_amount": _d(paid),
+            "balance_due": _d(Decimal(e.total_amount) - paid),
+            "payment_status": e.payment_status,
+            "payments": payment_rows,
+        })
+    return result
 
 
 @router.get("/reports/date-bounds", dependencies=[Depends(require_report_viewer)])

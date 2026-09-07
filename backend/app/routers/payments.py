@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_accounts, require_non_employee, require_admin
 from app.db.session import get_db
-from app.models.models import Expense, Payment, User
+from app.models.models import Expense, Payment, PaymentAllocation, User
 from app.schemas.transactions import PaymentCreate, PaymentOut, CancelRequest
 from app.schemas.edit_requests import PaymentUpdate
 from app.services import payment_service, edit_request_service, project_scope_service
@@ -36,6 +36,7 @@ def list_payments(
     vendor_id: int | None = None, employee_id: int | None = None,
     account_id: int | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
     date_from: str | None = None, date_to: str | None = None,
+    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
 ):
     q = db.query(Payment)
     if vendor_id:
@@ -52,6 +53,20 @@ def list_payments(
         q = q.filter(Payment.payment_date >= date_from)
     if date_to:
         q = q.filter(Payment.payment_date <= date_to)
+    if project_id or category_id or sub_category_id:
+        # A payment has no project/head/sub-head of its own - reached only
+        # through its allocations' expenses. Matches if ANY allocation
+        # touches an expense in the given project/head/sub-head.
+        q = q.join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id).join(
+            Expense, PaymentAllocation.expense_id == Expense.id
+        )
+        if project_id:
+            q = q.filter(Expense.project_id == project_id)
+        if category_id:
+            q = q.filter(Expense.category_id == category_id)
+        if sub_category_id:
+            q = q.filter(Expense.sub_category_id == sub_category_id)
+        q = q.distinct()
     rows = q.order_by(Payment.payment_date.desc(), Payment.id.desc()).limit(500).all()
     if user.role.name == RoleName.ACCOUNTS:
         assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))

@@ -170,6 +170,7 @@ function TemplatesTab({ masters }) {
   }
 
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
+  const subCategoryName = (id) => masters.subCategories.find((s) => s.id === id)?.name || "—";
   const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
   const payeeName = (row) => {
     if (row.payee_type === "VENDOR") return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id)) || "—";
@@ -183,7 +184,9 @@ function TemplatesTab({ masters }) {
     { key: "amount_type", header: "Amount", render: (r) => r.amount_type === "FIXED" ? formatMoney(r.fixed_amount) : <span className="text-ink/50 italic">Open</span> },
     { key: "payee", header: "Payee", render: payeeName },
     { key: "project_id", header: "Project", render: (r) => projectName(r.project_id) },
-    { key: "category_id", header: "Category", render: (r) => categoryName(r.category_id) },
+    { key: "category_id", header: "Head", render: (r) => categoryName(r.category_id) },
+    { key: "sub_category_id", header: "Sub-Head", render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
+    { key: "description", header: "Description", render: (r) => <span title={r.description || ""} className="block max-w-[220px] truncate text-ink/60">{r.description || "—"}</span> },
     { key: "next_occurrence_date", header: "Next Bill Date", render: (r) => formatDate(r.next_occurrence_date) },
     { key: "is_active", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
     {

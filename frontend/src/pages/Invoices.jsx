@@ -3,10 +3,13 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
 import { Plus, X, Pencil } from "lucide-react";
+
+const INVOICE_STATUSES = ["RECORDED", "CANCELLED"];
 
 export default function Invoices() {
   const { user } = useAuth();
@@ -14,13 +17,35 @@ export default function Invoices() {
   const [invoices, setInvoices] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [bounds, setBounds] = useState(null);
+  const [range, setRange] = useState({ from: "", to: "" });
+  const [projectId, setProjectId] = useState("");
+  const [vendorId, setVendorId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [invoiceStatus, setInvoiceStatus] = useState("");
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
 
-  function load() { client.get("/invoices").then((res) => setInvoices(res.data)); }
-  useEffect(load, []);
+  useEffect(() => {
+    client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
+  }, []);
+
+  function load() {
+    const params = {};
+    if (range.from) params.date_from = range.from;
+    if (range.to) params.date_to = range.to;
+    if (projectId) params.project_id = projectId;
+    if (vendorId) params.vendor_id = vendorId;
+    if (categoryId) params.category_id = categoryId;
+    if (invoiceStatus) params.status_ = invoiceStatus;
+    client.get("/invoices", { params }).then((res) => setInvoices(res.data));
+  }
+  useEffect(load, [range.from, range.to, projectId, vendorId, categoryId, invoiceStatus]);
 
   const vendorName = (id) => { const v = masters.vendors.find((v) => v.id === id); return v ? vendorLabel(v) : id; };
+  const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
+  const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
+  const subCategoryName = (id) => masters.subCategories.find((s) => s.id === id)?.name || "—";
 
   return (
     <div className="space-y-6">
@@ -43,12 +68,62 @@ export default function Invoices() {
       )}
 
       <Card>
+        <div className="flex flex-wrap items-end gap-4">
+          <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">All Projects</option>
+            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </Select>
+          <Select label="Vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+            <option value="">All Vendors</option>
+            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
+          </Select>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">All Heads</option>
+            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <Select label="Status" value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value)}>
+            <option value="">All Statuses</option>
+            {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+          </Select>
+        </div>
+      </Card>
+
+      <Card>
         <Table
+          compact
+          stickyHeader
           columns={[
-            { key: "invoice_number", header: "Invoice #" },
-            { key: "vendor_id", header: "Vendor", render: (r) => vendorName(r.vendor_id) },
-            { key: "invoice_date", header: "Date", render: (r) => formatDate(r.invoice_date) },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
+            { key: "invoice_number", header: "Invoice #", stickyLeft: true, stickyWidth: 130 },
+            {
+              key: "vendor_id", header: "Vendor",
+              render: (r) => { const text = vendorName(r.vendor_id); return <span title={text} className="block max-w-[200px] truncate">{text}</span>; },
+            },
+            { key: "invoice_date", header: "Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
+            { key: "due_date", header: "Due Date", render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
+            {
+              key: "project_id", header: "Project",
+              render: (r) => { const text = projectName(r.project_id); return <span title={text} className="block max-w-[160px] truncate">{text}</span>; },
+            },
+            { key: "category_id", header: "Head", render: (r) => r.category_id ? categoryName(r.category_id) : "—" },
+            { key: "sub_category_id", header: "Sub-Head", render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
+            {
+              key: "description", header: "Description",
+              render: (r) => {
+                const text = r.description || "";
+                return text ? (
+                  <span title={text} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
+                    {text}
+                  </span>
+                ) : "—";
+              },
+            },
+            { key: "taxable_amount", header: "Taxable", align: "right", render: (r) => <span className="tabular">{formatMoney(r.taxable_amount)}</span> },
+            {
+              key: "tax", header: "Tax", align: "right",
+              render: (r) => <span className="tabular">{formatMoney(Number(r.cgst) + Number(r.sgst) + Number(r.igst) + Number(r.other_tax))}</span>,
+            },
+            { key: "total_amount", header: "Amount", align: "right", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
             {
               key: "attachments", header: "Invoice / Bill",

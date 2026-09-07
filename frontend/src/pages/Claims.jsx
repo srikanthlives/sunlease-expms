@@ -4,24 +4,41 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate } from "../components/ui";
+import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
 import { Plus, X, Trash2, Pencil, FileDown } from "lucide-react";
+
+const CLAIM_STATUSES = ["DRAFT", "SUBMITTED", "PENDING_ACCOUNTS_APPROVAL", "APPROVED", "REJECTED"];
 
 export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const { user } = useAuth();
   const masters = useMasters();
   const [claims, setClaims] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [bounds, setBounds] = useState(null);
+  const [range, setRange] = useState({ from: "", to: "" });
+  const [projectId, setProjectId] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [claimStatus, setClaimStatus] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
+  }, []);
 
   function load() {
     const params = {};
     if (mineOnly) params.mine = true;
     if (approvalsOnly) params.pending_for_me = true;
+    if (range.from) params.date_from = range.from;
+    if (range.to) params.date_to = range.to;
+    if (projectId) params.project_id = projectId;
+    if (categoryId) params.category_id = categoryId;
+    if (claimStatus) params.status_ = claimStatus;
     client.get("/claims", { params }).then((res) => setClaims(res.data));
   }
-  useEffect(load, [mineOnly, approvalsOnly]);
+  useEffect(load, [mineOnly, approvalsOnly, range.from, range.to, projectId, categoryId, claimStatus]);
 
   const empName = (id) => masters.employees.find((e) => e.id === id)?.employee_name || id;
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
@@ -46,13 +63,36 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
         />
       )}
 
+      {!approvalsOnly && (
+        <Card>
+          <div className="flex flex-wrap items-end gap-4">
+            <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
+            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">All Projects</option>
+              {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+            <Select label="Overall Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+              <option value="">All Heads</option>
+              {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Select label="Status" value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
+              <option value="">All Statuses</option>
+              {CLAIM_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
+            </Select>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <Table
           columns={[
             { key: "claim_number", header: "Claim #" },
             { key: "employee_id", header: "Employee", render: (r) => empName(r.employee_id) },
             { key: "category_id", header: "Overall Head", render: (r) => categoryName(r.category_id) },
-            { key: "description", header: "Description", render: (r) => <span className="text-ink/60">{r.description || "—"}</span> },
+            {
+              key: "description", header: "Description",
+              render: (r) => <span className="block min-w-[260px] max-w-[420px] whitespace-normal break-words text-ink/60">{r.description || "—"}</span>,
+            },
             { key: "claim_date", header: "Date", render: (r) => formatDate(r.claim_date) },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
@@ -197,7 +237,10 @@ export function ClaimDetail() {
             { key: "expense_date", header: "Date", render: (r) => formatDate(r.expense_date) },
             { key: "expense_head_id", header: "Head", render: (r) => masters.categories.find((c) => c.id === r.expense_head_id)?.name || "—" },
             { key: "expense_sub_head_id", header: "Sub-Head", render: (r) => masters.subCategories.find((s) => s.id === r.expense_sub_head_id)?.name || "—" },
-            { key: "description", header: "Description" },
+            {
+              key: "description", header: "Description",
+              render: (r) => <span className="block min-w-[280px] max-w-[520px] whitespace-normal break-words">{r.description || "—"}</span>,
+            },
             { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
             {
               key: "proof", header: "Proof",

@@ -1,3 +1,5 @@
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
@@ -68,6 +70,8 @@ def list_claims(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
     employee_id: int | None = None, status_: str | None = None,
     mine: bool = False, pending_for_me: bool = False,
+    project_id: int | None = None, category_id: int | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
     q = db.query(EmployeeClaim)
     role = user.role.name
@@ -118,6 +122,14 @@ def list_claims(
 
     if status_:
         q = q.filter(EmployeeClaim.status == status_)
+    if project_id:
+        q = q.filter(EmployeeClaim.project_id == project_id)
+    if category_id:
+        q = q.filter(EmployeeClaim.category_id == category_id)
+    if date_from:
+        q = q.filter(EmployeeClaim.claim_date >= date_from)
+    if date_to:
+        q = q.filter(EmployeeClaim.claim_date <= date_to)
     return q.order_by(EmployeeClaim.id.desc()).limit(500).all()
 
 
