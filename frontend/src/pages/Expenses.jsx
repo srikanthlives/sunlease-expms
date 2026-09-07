@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
@@ -7,11 +7,64 @@ import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, X, Pencil, ChevronLeft, ChevronRight, Columns3 } from "lucide-react";
 
 const SOURCE_TYPES = ["DIRECT_EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
 const PAGE_SIZES = [25, 50, 100];
+
+// Columns the user can show/hide via the "Columns" picker. expense_number,
+// expense_date (both sticky-left) and __edit stay mandatory - excluded here
+// so they're always rendered regardless of what's hidden.
+const TOGGLEABLE_COLUMNS = [
+  { key: "source_type", label: "Source" },
+  { key: "payee", label: "Vendor / Employee / Supplier" },
+  { key: "bill_number", label: "Voucher / Bill No" },
+  { key: "project_id", label: "Project" },
+  { key: "category_id", label: "Head" },
+  { key: "sub_category_id", label: "Sub-Head" },
+  { key: "base_amount", label: "Base" },
+  { key: "gst_amount", label: "GST" },
+  { key: "total_amount", label: "Amount" },
+  { key: "paid_amount", label: "Paid" },
+  { key: "balance_due", label: "Balance" },
+  { key: "description", label: "Description" },
+  { key: "payment_status", label: "Payment Status" },
+  { key: "status", label: "Status" },
+  { key: "attachments", label: "Proof / Bill" },
+];
+const HIDDEN_COLUMNS_STORAGE_KEY = "expms_expenses_hidden_columns";
+
+function ColumnsPicker({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="outline" onClick={() => setOpen((o) => !o)}>
+        <Columns3 size={16} /> Columns
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-ink/15 rounded-md shadow-lg py-2">
+          {TOGGLEABLE_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 cursor-pointer">
+              <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => onToggle(c.key)} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Expenses() {
   const { user } = useAuth();
@@ -30,8 +83,20 @@ export default function Expenses() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState(null); // { key, dir } - key matches a backend sort_by name
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
+  });
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
+
+  function toggleColumn(key) {
+    setHiddenCols((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   useEffect(() => {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
@@ -131,6 +196,9 @@ export default function Expenses() {
       </Card>
 
       <Card>
+        <div className="flex justify-end mb-2">
+          <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
+        </div>
         <Table
           compact
           stickyHeader
@@ -158,10 +226,16 @@ export default function Expenses() {
               key: "project_id", header: "Project", sortable: true,
               render: (r) => { const text = projectName(r.project_id); return <span title={text} className="block max-w-[180px] truncate">{text}</span>; },
             },
-            { key: "category_id", header: "Head", sortable: true, render: (r) => categoryName(r.category_id) },
+            {
+              key: "category_id", header: "Head", sortable: true,
+              render: (r) => { const text = categoryName(r.category_id); return <span title={text} className="block max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis">{text}</span>; },
+            },
             {
               key: "sub_category_id", header: "Sub-Head", sortable: true,
-              render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—",
+              render: (r) => {
+                const text = r.sub_category_id ? subCategoryName(r.sub_category_id) : "—";
+                return <span title={text} className="block max-w-[140px] whitespace-nowrap overflow-hidden text-ellipsis">{text}</span>;
+              },
             },
             { key: "base_amount", header: "Base", align: "right", render: (r) => <span className="tabular">{formatMoney(r.base_amount)}</span> },
             { key: "gst_amount", header: "GST", align: "right", render: (r) => <span className="tabular">{formatMoney(r.gst_amount)}</span> },
@@ -212,7 +286,7 @@ export default function Expenses() {
                 </button>
               ),
             }] : []),
-          ]}
+          ].filter((c) => c.key === "expense_number" || c.key === "expense_date" || c.key === "__edit" || !hiddenCols.has(c.key))}
           rows={expenses}
           footer={summary && {
             expense_number: `${summary.count} expense(s)`,
