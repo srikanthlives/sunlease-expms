@@ -99,6 +99,7 @@ class CategoryCreate(BaseModel):
 
 class CategoryOut(CategoryCreate):
     id: int
+    in_use: bool = False
 
     class Config:
         from_attributes = True
@@ -111,6 +112,7 @@ class SubCategoryCreate(BaseModel):
 
 class SubCategoryOut(SubCategoryCreate):
     id: int
+    in_use: bool = False
 
     class Config:
         from_attributes = True

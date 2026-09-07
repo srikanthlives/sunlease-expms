@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { Card, Table, Button, Input, Select, vendorLabel } from "../components/ui";
-import { Plus, X, Pencil, Download } from "lucide-react";
+import { Plus, X, Pencil, Download, Upload, Trash2 } from "lucide-react";
 
 function emptyForm(fields) {
   return Object.fromEntries(fields.map((f) => [f.key, f.default || ""]));
@@ -595,6 +595,11 @@ export function CategoriesMaster() {
   const [subError, setSubError] = useState("");
   const [subBusy, setSubBusy] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [uploadError, setUploadError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const uploadInputRef = useRef(null);
 
   async function downloadCategories() {
     setDownloading(true);
@@ -608,6 +613,48 @@ export function CategoriesMaster() {
       URL.revokeObjectURL(url);
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function uploadCategories(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError("");
+    setUploadResult(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await client.post("/categories/import", form, { headers: { "Content-Type": "multipart/form-data" } });
+      setUploadResult(res.data);
+      loadCategories();
+    } catch (err) {
+      setUploadError(apiErrorMessage(err));
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function deleteCategory(cat) {
+    if (!window.confirm(`Delete category "${cat.name}" and all its sub-categories?`)) return;
+    setDeleteError("");
+    try {
+      await client.delete(`/categories/${cat.id}`);
+      loadCategories();
+    } catch (err) {
+      setDeleteError(apiErrorMessage(err));
+    }
+  }
+
+  async function deleteSubCategory(categoryId, sub) {
+    if (!window.confirm(`Delete sub-category "${sub.name}"?`)) return;
+    setDeleteError("");
+    try {
+      await client.delete(`/categories/${categoryId}/sub-categories/${sub.id}`);
+      loadSubCategories(categoryId);
+    } catch (err) {
+      setDeleteError(apiErrorMessage(err));
     }
   }
 
@@ -705,9 +752,23 @@ export function CategoriesMaster() {
           <Button variant="outline" onClick={downloadCategories} disabled={downloading}>
             <Download size={16} /> {downloading ? "Preparing…" : "Download List"}
           </Button>
+          <input ref={uploadInputRef} type="file" accept=".xlsx,.xlsm" className="hidden" onChange={uploadCategories} />
+          <Button variant="outline" onClick={() => uploadInputRef.current?.click()} disabled={uploading}>
+            <Upload size={16} /> {uploading ? "Uploading…" : "Upload List"}
+          </Button>
           <Button onClick={openCreateCategory}><Plus size={16} /> Add Category</Button>
         </div>
       </div>
+
+      {uploadError && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{uploadError}</div>}
+      {uploadResult && (
+        <div className="text-sm text-ok bg-ok/10 rounded-md px-3 py-2">
+          Added {uploadResult.categories_created.length} new categor{uploadResult.categories_created.length === 1 ? "y" : "ies"}
+          {uploadResult.sub_categories_created.length > 0 && ` and ${uploadResult.sub_categories_created.length} new sub-categor${uploadResult.sub_categories_created.length === 1 ? "y" : "ies"}`}.
+          {uploadResult.categories_created.length === 0 && uploadResult.sub_categories_created.length === 0 && " Nothing new — everything in the sheet already existed."}
+        </div>
+      )}
+      {deleteError && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{deleteError}</div>}
 
       {showCatForm && (
         <Card className="relative max-w-md">
@@ -733,6 +794,13 @@ export function CategoriesMaster() {
                 <button type="button" onClick={() => openEditCategory(cat)} className="text-ink/30 hover:text-brand-700" title="Edit category name">
                   <Pencil size={13} />
                 </button>
+                {cat.in_use ? (
+                  <span className="text-[10px] text-ink/30 uppercase tracking-wide" title="Cannot delete: expenses, claims or recurring expenses reference this category">In use</span>
+                ) : (
+                  <button type="button" onClick={() => deleteCategory(cat)} className="text-ink/30 hover:text-danger" title="Delete category">
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
               <Button variant="outline" onClick={() => (subFormForCategory === cat.id ? setSubFormForCategory(null) : openAddSub(cat.id))}>
                 <Plus size={14} /> Add Sub-category
@@ -755,13 +823,16 @@ export function CategoriesMaster() {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {(subCategoriesByCategory[cat.id] || []).map((s) => (
-                  <button
-                    type="button" key={s.id} onClick={() => openEditSub(cat.id, s)}
-                    className="text-xs bg-ink/5 text-ink/70 rounded-md px-2.5 py-1.5 hover:bg-brand-50 hover:text-brand-700 inline-flex items-center gap-1"
-                    title="Click to edit"
-                  >
-                    {s.name} <Pencil size={11} className="opacity-50" />
-                  </button>
+                  <span key={s.id} className="text-xs bg-ink/5 text-ink/70 rounded-md pl-2.5 pr-1.5 py-1.5 inline-flex items-center gap-1">
+                    <button type="button" onClick={() => openEditSub(cat.id, s)} className="hover:text-brand-700 inline-flex items-center gap-1" title="Click to edit">
+                      {s.name} <Pencil size={11} className="opacity-50" />
+                    </button>
+                    {!s.in_use && (
+                      <button type="button" onClick={() => deleteSubCategory(cat.id, s)} className="text-ink/30 hover:text-danger ml-0.5" title="Delete sub-category">
+                        <Trash2 size={11} />
+                      </button>
+                    )}
+                  </span>
                 ))}
               </div>
             )}

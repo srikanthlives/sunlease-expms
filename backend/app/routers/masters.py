@@ -1,11 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Project, ProjectAccountsUser, Employee, EmployeeProject, Vendor, VendorProject, ExpenseCategory, ExpenseSubCategory, Account, User
+from app.models.models import (
+    Project, ProjectAccountsUser, Employee, EmployeeProject, Vendor, VendorProject, ExpenseCategory, ExpenseSubCategory,
+    Account, User, Expense, EmployeeClaim, EmployeeClaimLine, RecurringExpense,
+)
 from app.schemas.masters import (
     ProjectCreate, ProjectOut, AssignApproverRequest, AssignAccountsUsersRequest, EmployeeCreate, EmployeeOut, EmployeeDetailOut, VendorCreate, VendorOut,
     CategoryCreate, CategoryOut, SubCategoryCreate, SubCategoryOut, AccountCreate, AccountOut,
@@ -252,18 +255,53 @@ def update_vendor(vendor_id: int, payload: VendorCreate, db: Session = Depends(g
 
 
 # Categories
+def _category_ids_in_use(db: Session) -> set[int]:
+    """Every ExpenseCategory id referenced anywhere - deleting one of these
+    would orphan real transactional data, so it's never allowed."""
+    ids: set[int] = set()
+    for row in db.query(Expense.category_id).filter(Expense.category_id.isnot(None)).distinct():
+        ids.add(row[0])
+    for row in db.query(EmployeeClaim.category_id).filter(EmployeeClaim.category_id.isnot(None)).distinct():
+        ids.add(row[0])
+    for row in db.query(EmployeeClaimLine.expense_head_id).distinct():
+        ids.add(row[0])
+    for row in db.query(RecurringExpense.category_id).distinct():
+        ids.add(row[0])
+    return ids
+
+
+def _sub_category_ids_in_use(db: Session) -> set[int]:
+    ids: set[int] = set()
+    for row in db.query(Expense.sub_category_id).filter(Expense.sub_category_id.isnot(None)).distinct():
+        ids.add(row[0])
+    for row in db.query(EmployeeClaimLine.expense_sub_head_id).filter(EmployeeClaimLine.expense_sub_head_id.isnot(None)).distinct():
+        ids.add(row[0])
+    for row in db.query(RecurringExpense.sub_category_id).filter(RecurringExpense.sub_category_id.isnot(None)).distinct():
+        ids.add(row[0])
+    return ids
+
+
 @router.post("/categories", response_model=CategoryOut, dependencies=[Depends(require_admin)])
 def create_category(payload: CategoryCreate, db: Session = Depends(get_db)):
     c = ExpenseCategory(name=payload.name)
     db.add(c)
     db.commit()
     db.refresh(c)
-    return c
+    out = CategoryOut.model_validate(c)
+    out.in_use = False
+    return out
 
 
 @router.get("/categories", response_model=list[CategoryOut])
 def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(ExpenseCategory).order_by(ExpenseCategory.name).all()
+    categories = db.query(ExpenseCategory).order_by(ExpenseCategory.name).all()
+    in_use = _category_ids_in_use(db)
+    out = []
+    for c in categories:
+        o = CategoryOut.model_validate(c)
+        o.in_use = c.id in in_use
+        out.append(o)
+    return out
 
 
 @router.get("/categories/export")
@@ -318,7 +356,27 @@ def update_category(category_id: int, payload: CategoryCreate, db: Session = Dep
     db.add(category)
     db.commit()
     db.refresh(category)
-    return category
+    out = CategoryOut.model_validate(category)
+    out.in_use = category.id in _category_ids_in_use(db)
+    return out
+
+
+@router.delete("/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+def delete_category(category_id: int, db: Session = Depends(get_db)):
+    category = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
+    if not category:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Category not found")
+    if category_id in _category_ids_in_use(db):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This category has expenses, claims or recurring expenses recorded against it and cannot be deleted")
+    sub_ids_in_use = _sub_category_ids_in_use(db)
+    subs = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.category_id == category_id).all()
+    blocked = [s for s in subs if s.id in sub_ids_in_use]
+    if blocked:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Sub-category '{blocked[0].name}' under this category is in use and must be cleared first")
+    for s in subs:
+        db.delete(s)
+    db.delete(category)
+    db.commit()
 
 
 @router.post("/categories/{category_id}/sub-categories", response_model=SubCategoryOut, dependencies=[Depends(require_admin)])
@@ -329,12 +387,21 @@ def create_sub_category(category_id: int, payload: SubCategoryCreate, db: Sessio
     db.add(s)
     db.commit()
     db.refresh(s)
-    return s
+    out = SubCategoryOut.model_validate(s)
+    out.in_use = False
+    return out
 
 
 @router.get("/categories/{category_id}/sub-categories", response_model=list[SubCategoryOut])
 def list_sub_categories(category_id: int, db: Session = Depends(get_db), _=Depends(get_current_user)):
-    return db.query(ExpenseSubCategory).filter(ExpenseSubCategory.category_id == category_id).all()
+    subs = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.category_id == category_id).all()
+    in_use = _sub_category_ids_in_use(db)
+    out = []
+    for s in subs:
+        o = SubCategoryOut.model_validate(s)
+        o.in_use = s.id in in_use
+        out.append(o)
+    return out
 
 
 @router.put("/categories/{category_id}/sub-categories/{sub_category_id}", response_model=SubCategoryOut, dependencies=[Depends(require_admin)])
@@ -355,7 +422,93 @@ def update_sub_category(category_id: int, sub_category_id: int, payload: SubCate
     db.add(sub)
     db.commit()
     db.refresh(sub)
-    return sub
+    out = SubCategoryOut.model_validate(sub)
+    out.in_use = sub.id in _sub_category_ids_in_use(db)
+    return out
+
+
+@router.delete("/categories/{category_id}/sub-categories/{sub_category_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+def delete_sub_category(category_id: int, sub_category_id: int, db: Session = Depends(get_db)):
+    sub = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id, ExpenseSubCategory.category_id == category_id).first()
+    if not sub:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sub-category not found")
+    if sub_category_id in _sub_category_ids_in_use(db):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This sub-category has expenses, claims or recurring expenses recorded against it and cannot be deleted")
+    db.delete(sub)
+    db.commit()
+
+
+@router.post("/categories/import", dependencies=[Depends(require_admin)])
+async def import_categories(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Bulk-add Heads/Sub-Heads from an .xlsx with "Head"/"Sub-Head" columns
+    (the same shape GET /categories/export produces). A Head that already
+    exists (case-insensitive name match) is left alone - only its NEW
+    sub-heads from the sheet get added under it. A Head not seen before is
+    created, along with any sub-head the sheet lists for it. Never deletes
+    or renames anything - purely additive, safe to re-run."""
+    if not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only .xlsx/.xlsm files are supported")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Uploaded file is empty")
+
+    import io
+    from openpyxl import load_workbook
+
+    try:
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Could not read workbook: {exc}")
+    if not rows:
+        return {"categories_created": [], "sub_categories_created": []}
+
+    header = [str(h or "").strip().lower() for h in rows[0]]
+    try:
+        head_idx = header.index("head")
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing required 'Head' column")
+    sub_idx = header.index("sub-head") if "sub-head" in header else None
+
+    categories_by_name = {c.name.strip().lower(): c for c in db.query(ExpenseCategory).all()}
+    sub_categories_by_category: dict[int, dict[str, ExpenseSubCategory]] = {}
+    for s in db.query(ExpenseSubCategory).all():
+        sub_categories_by_category.setdefault(s.category_id, {})[s.name.strip().lower()] = s
+
+    categories_created: list[str] = []
+    sub_categories_created: list[str] = []
+
+    for raw in rows[1:]:
+        if raw is None:
+            continue
+        head_name = str(raw[head_idx] or "").strip() if head_idx < len(raw) else ""
+        if not head_name:
+            continue
+        sub_name = ""
+        if sub_idx is not None and sub_idx < len(raw):
+            sub_name = str(raw[sub_idx] or "").strip()
+
+        category = categories_by_name.get(head_name.lower())
+        if not category:
+            category = ExpenseCategory(name=head_name)
+            db.add(category)
+            db.flush()
+            categories_by_name[head_name.lower()] = category
+            sub_categories_by_category[category.id] = {}
+            categories_created.append(head_name)
+
+        if sub_name:
+            existing_subs = sub_categories_by_category.setdefault(category.id, {})
+            if sub_name.lower() not in existing_subs:
+                sub = ExpenseSubCategory(category_id=category.id, name=sub_name)
+                db.add(sub)
+                db.flush()
+                existing_subs[sub_name.lower()] = sub
+                sub_categories_created.append(f"{head_name} / {sub_name}")
+
+    db.commit()
+    return {"categories_created": categories_created, "sub_categories_created": sub_categories_created}
 
 
 # Accounts (bank/cash accounts used for payments)
