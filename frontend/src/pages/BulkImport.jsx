@@ -114,7 +114,7 @@ export default function BulkImport() {
               });
             }}
           >
-            <Button variant="secondary"><Download size={16} /> Download Template</Button>
+            <Button variant="outline"><Download size={16} /> Download Template</Button>
           </a>
         </div>
         <p className="text-xs text-ink/50">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { Card, Table, Button, Input, Select, vendorLabel } from "../components/ui";
-import { Plus, X, Pencil } from "lucide-react";
+import { Plus, X, Pencil, Download } from "lucide-react";
 
 function emptyForm(fields) {
   return Object.fromEntries(fields.map((f) => [f.key, f.default || ""]));
@@ -594,6 +594,22 @@ export function CategoriesMaster() {
   const [subName, setSubName] = useState("");
   const [subError, setSubError] = useState("");
   const [subBusy, setSubBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadCategories() {
+    setDownloading(true);
+    try {
+      const res = await client.get("/categories/export", { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "expense_categories.xlsx";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   function loadCategories() {
     client.get("/categories").then((res) => {
@@ -685,7 +701,12 @@ export function CategoriesMaster() {
           <h1 className="text-2xl font-display font-semibold">Expense Categories</h1>
           <p className="text-sm text-ink/50 mt-0.5">Expense heads and their sub-categories, used across expenses, invoices and claims.</p>
         </div>
-        <Button onClick={openCreateCategory}><Plus size={16} /> Add Category</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={downloadCategories} disabled={downloading}>
+            <Download size={16} /> {downloading ? "Preparing…" : "Download List"}
+          </Button>
+          <Button onClick={openCreateCategory}><Plus size={16} /> Add Category</Button>
+        </div>
       </div>
 
       {showCatForm && (

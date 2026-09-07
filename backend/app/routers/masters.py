@@ -266,6 +266,46 @@ def list_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(ExpenseCategory).order_by(ExpenseCategory.name).all()
 
 
+@router.get("/categories/export")
+def export_categories(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Every Head with its Sub-Heads as an .xlsx, one row per Head/Sub-Head
+    pair (a Head with no sub-categories still gets a row, sub-head blank) -
+    a quick reference sheet of everything usable in the Head/Sub-Head
+    dropdowns across expenses, invoices, claims and recurring expenses."""
+    import io
+    from openpyxl import Workbook
+    from fastapi.responses import StreamingResponse
+
+    categories = db.query(ExpenseCategory).order_by(ExpenseCategory.name).all()
+    sub_categories = db.query(ExpenseSubCategory).order_by(ExpenseSubCategory.category_id, ExpenseSubCategory.name).all()
+    subs_by_category: dict[int, list[ExpenseSubCategory]] = {}
+    for s in sub_categories:
+        subs_by_category.setdefault(s.category_id, []).append(s)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Categories"
+    ws.append(["Head", "Sub-Head"])
+    for c in categories:
+        subs = subs_by_category.get(c.id, [])
+        if not subs:
+            ws.append([c.name, ""])
+        else:
+            for s in subs:
+                ws.append([c.name, s.name])
+    ws.column_dimensions["A"].width = 32
+    ws.column_dimensions["B"].width = 32
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=expense_categories.xlsx"},
+    )
+
+
 @router.put("/categories/{category_id}", response_model=CategoryOut, dependencies=[Depends(require_admin)])
 def update_category(category_id: int, payload: CategoryCreate, db: Session = Depends(get_db)):
     category = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
