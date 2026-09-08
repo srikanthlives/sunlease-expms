@@ -205,6 +205,7 @@ class PaymentCreate(BaseModel):
 class AllocationOut(BaseModel):
     id: int
     expense_id: int
+    expense_number: str | None = None
     allocated_amount: Decimal
 
     class Config:

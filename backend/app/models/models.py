@@ -402,6 +402,10 @@ class PaymentAllocation(Base):
     payment = relationship("Payment", back_populates="allocations")
     expense = relationship("Expense", back_populates="allocations")
 
+    @property
+    def expense_number(self) -> str | None:
+        return self.expense.expense_number if self.expense else None
+
 
 class Document(Base):
     __tablename__ = "documents"

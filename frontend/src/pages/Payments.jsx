@@ -114,7 +114,13 @@ export default function Payments() {
             { key: "payment_mode", header: "Mode" },
             { key: "reference_number", header: "Reference / UTR", render: (r) => r.reference_number || "—" },
             { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
-            { key: "allocations", header: "Allocated To", render: (r) => `${r.allocations.length} expense(s)` },
+            {
+              key: "allocations", header: "Allocated To",
+              render: (r) => {
+                const text = r.allocations.map((a) => a.expense_number || `#${a.expense_id}`).join(", ");
+                return <span className="block whitespace-nowrap">{text}</span>;
+              },
+            },
             { key: "remarks", header: "Remarks", render: (r) => r.remarks || "—" },
             { key: "is_cancelled", header: "Status", render: (r) => r.is_cancelled ? <span className="text-danger text-xs font-medium">CANCELLED</span> : <span className="text-ok text-xs font-medium">ACTIVE</span> },
             {
@@ -151,10 +157,12 @@ function PaymentForm({ masters, onClose, onCreated }) {
 
   useEffect(() => {
     if (payeeType === "direct") {
-      // Direct expenses have no vendor and no employee, so they can't be
-      // found via a vendor_id/employee_id filter - fetch broadly and filter
-      // client-side to those with neither set.
-      client.get("/expenses", { params: { status: "ACTIVE", source_type: "DIRECT_EXPENSE" } }).then((res) => {
+      // Direct expenses AND recurring-expense bills set up with no
+      // vendor/employee (payee_type DIRECT, e.g. a plain utility bill) have
+      // no vendor and no employee, so they can't be found via a
+      // vendor_id/employee_id filter - fetch broadly (no source_type
+      // restriction) and filter client-side to those with neither set.
+      client.get("/expenses", { params: { status: "ACTIVE" } }).then((res) => {
         setOutstanding(res.data.filter((e) => e.payment_status !== "PAID" && !e.vendor_id && !e.employee_id));
       });
       return;
@@ -213,7 +221,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
         <div className="flex gap-4 text-sm">
           <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "vendor"} onChange={() => { setPayeeType("vendor"); setAllocations([]); }} /> Vendor</label>
           <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "employee"} onChange={() => { setPayeeType("employee"); setAllocations([]); }} /> Employee</label>
-          <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "direct"} onChange={() => { setPayeeType("direct"); setAllocations([]); }} /> Direct Expense (no vendor/employee)</label>
+          <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "direct"} onChange={() => { setPayeeType("direct"); setAllocations([]); }} /> Direct / Recurring Expense (no vendor/employee)</label>
         </div>
         <div className="grid grid-cols-3 gap-4">
           {payeeType === "vendor" && (
@@ -247,7 +255,10 @@ function PaymentForm({ masters, onClose, onCreated }) {
                 <button type="button" key={e.id} onClick={() => addAllocation(e.id)}
                   className="text-xs border border-ink/15 rounded-md px-2.5 py-1.5 hover:bg-brand-50 disabled:opacity-30"
                   disabled={!!allocations.find((a) => a.expense_id === e.id)}>
-                  {e.expense_number} · Balance {formatMoney(e.balance_due)}
+                  {e.expense_number}
+                  {e.source_type === "RECURRING_EXPENSE" && <span className="text-brand-700"> (Recurring)</span>}
+                  {e.supplier_name && <span className="text-ink/50"> · {e.supplier_name}</span>}
+                  {" · Balance "}{formatMoney(e.balance_due)}
                   {e.payment_status === "PARTIALLY_PAID" && (
                     <span className="text-ink/40"> (of {formatMoney(e.total_amount)})</span>
                   )}
@@ -259,7 +270,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
         ) : (
           <div className="text-xs text-ink/40">
             {payeeType === "direct"
-              ? "No unpaid direct expenses (with no vendor or employee) found."
+              ? "No unpaid direct or recurring expenses (with no vendor or employee) found."
               : "Select a " + payeeType + " above to see their outstanding expenses."}
           </div>
         )}
