@@ -16,7 +16,7 @@ const FIELD_SETS = {
     { key: "sub_category_id", label: "Sub-Category", type: "select", options: masters.subCategories, optionLabel: "name", dependsOn: "category_id" },
     { key: "base_amount", label: "Base Amount", type: "number" },
     { key: "gst_amount", label: "GST Amount", type: "number" },
-    { key: "other_amount", label: "Other Amount", type: "number" },
+    { key: "other_amount", label: "Other Amount", type: "number", hint: "Any amount beyond Base + GST (rounding, misc. charges, etc.) - included in Total." },
   ],
   INVOICE: (masters) => [
     { key: "invoice_number", label: "Invoice Number", type: "text" },
@@ -42,6 +42,19 @@ const FIELD_SETS = {
   ],
 };
 
+// Fields that sum to an entity's Total, used to show a live "New Total"
+// preview as the user edits amount fields - the actual computation always
+// happens server-side (see edit_request_service.apply_changes), this is
+// purely so the effect of changing e.g. Other Amount is visible before
+// saving, instead of a surprise once the list reloads.
+const AMOUNT_PARTS = {
+  EXPENSE: [{ key: "base_amount", label: "Base" }, { key: "gst_amount", label: "GST" }, { key: "other_amount", label: "Other" }],
+  INVOICE: [
+    { key: "taxable_amount", label: "Taxable" }, { key: "cgst", label: "CGST" }, { key: "sgst", label: "SGST" },
+    { key: "igst", label: "IGST" }, { key: "other_tax", label: "Other Tax" },
+  ],
+};
+
 const ENDPOINTS = { EXPENSE: "/expenses", INVOICE: "/invoices", PAYMENT: "/payments" };
 const LABELS = { EXPENSE: "Expense", INVOICE: "Invoice", PAYMENT: "Payment" };
 
@@ -57,6 +70,9 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
   const [submittedForApproval, setSubmittedForApproval] = useState(false);
 
   function set(k, v) { setForm((s) => ({ ...s, [k]: v })); }
+
+  const amountParts = AMOUNT_PARTS[entityType];
+  const newTotal = amountParts ? amountParts.reduce((sum, f) => sum + (Number(form[f.key]) || 0), 0) : null;
 
   function buildChanges() {
     // Only send fields that actually differ from the original value, so
@@ -142,9 +158,15 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
                     value={form[f.key] || ""} onChange={(e) => set(f.key, e.target.value)}
                   />
                 )}
+                {f.hint && <p className="text-[11px] text-ink/40 mt-1">{f.hint}</p>}
               </div>
             ))}
           </div>
+          {newTotal != null && (
+            <div className="text-sm text-ink/60 bg-ink/5 rounded-md px-3 py-2">
+              New Total = {amountParts.map((f) => f.label).join(" + ")} = <span className="font-semibold text-ink tabular">{newTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+          )}
           {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
           <div className="flex gap-2">
             <Button type="submit" disabled={busy}>{busy ? "Saving…" : isDirect ? "Save Changes" : "Submit for Approval"}</Button>

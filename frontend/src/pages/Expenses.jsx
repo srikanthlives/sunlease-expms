@@ -25,6 +25,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: "sub_category_id", label: "Sub-Head" },
   { key: "base_amount", label: "Base" },
   { key: "gst_amount", label: "GST" },
+  { key: "other_amount", label: "Other" },
   { key: "total_amount", label: "Amount" },
   { key: "paid_amount", label: "Paid" },
   { key: "balance_due", label: "Balance" },
@@ -239,6 +240,7 @@ export default function Expenses() {
             },
             { key: "base_amount", header: "Base", align: "right", render: (r) => <span className="tabular">{formatMoney(r.base_amount)}</span> },
             { key: "gst_amount", header: "GST", align: "right", render: (r) => <span className="tabular">{formatMoney(r.gst_amount)}</span> },
+            { key: "other_amount", header: "Other", align: "right", render: (r) => <span className="tabular">{formatMoney(r.other_amount)}</span> },
             {
               key: "total_amount", header: "Amount", sortable: true, align: "right",
               render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span>,
@@ -292,6 +294,7 @@ export default function Expenses() {
             expense_number: `${summary.count} expense(s)`,
             base_amount: <span className="tabular">{formatMoney(summary.base_amount)}</span>,
             gst_amount: <span className="tabular">{formatMoney(summary.gst_amount)}</span>,
+            other_amount: <span className="tabular">{formatMoney(summary.other_amount)}</span>,
             total_amount: <span className="tabular">{formatMoney(summary.total_amount)}</span>,
             paid_amount: <span className="tabular">{formatMoney(summary.paid_amount)}</span>,
             balance_due: <span className="tabular">{formatMoney(summary.balance_due)}</span>,
