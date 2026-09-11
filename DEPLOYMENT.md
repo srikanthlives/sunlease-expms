@@ -132,6 +132,19 @@ wherever they were written; only new uploads follow the new setting.
    For R2 storage, also set `EXPMS_STORAGE_TYPE=r2` and the `EXPMS_R2_*`
    variables from the R2 setup steps above — no file mounts needed, R2 auth
    is entirely env-var based.
+
+   For "Email PDF" on Employee Claims, set **all** of the `EXPMS_SMTP_*`
+   variables (see the table above) — Railway never reads this repo's local
+   `.env` (it's gitignored and never pushed), so every value, not just the
+   password, must be added in Railway's Variables panel:
+   ```
+   EXPMS_SMTP_HOST=mail.yourdomain.com
+   EXPMS_SMTP_PORT=465
+   EXPMS_SMTP_USERNAME=expms@yourdomain.com
+   EXPMS_SMTP_PASSWORD=<the mailbox password>
+   EXPMS_SMTP_USE_SSL=true
+   EXPMS_SMTP_FROM_EMAIL=expms@yourdomain.com
+   ```
 4. **Volumes** — add a volume mounted at `/data` so the SQLite database
    (and local uploads, if using `EXPMS_STORAGE_TYPE=local`) survive
    redeploys. For production-grade Postgres instead, add Railway's

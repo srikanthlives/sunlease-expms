@@ -50,6 +50,14 @@ ENV EXPMS_UPLOAD_DIR=/data/uploads
 # which some container platforms (e.g. Railway) don't create.
 ENV EXPMS_RUNNING_IN_DOCKER=1
 
+# stdout/stderr are a pipe (not a tty) inside a container, so Python fully
+# buffers them by default - print()/logging output can sit in the buffer
+# indefinitely and never reach the platform's log collector (Railway, etc).
+# This forces every write to flush immediately - without it, diagnosing
+# anything (including the SMTP error logging in email_service.py) from
+# platform logs alone is unreliable.
+ENV PYTHONUNBUFFERED=1
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1

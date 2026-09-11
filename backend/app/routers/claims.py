@@ -164,12 +164,14 @@ async def download_claim_pdf(claim_id: int, db: Session = Depends(get_db), user:
 async def email_claim_pdf(claim_id: int, payload: EmailPdfRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """Emails the same combined PDF as download-pdf to an address the
     caller types in, via the org's own SMTP relay (see services/email_service.py)."""
+    print(f"[EMAIL] /claims/{claim_id}/email-pdf requested by user_id={user.id} -> {payload.email}", flush=True)
     c = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_id).first()
     if not c:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
     if not _can_view(db, c, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this claim")
     pdf_bytes = await claim_pdf_service.build_claim_pdf(db, c)
+    print(f"[EMAIL] PDF built ({len(pdf_bytes)} bytes) for claim {c.claim_number}, sending...", flush=True)
     email_service.send_email_with_attachment(
         to_email=payload.email,
         subject=f"Employee Claim {c.claim_number}",
