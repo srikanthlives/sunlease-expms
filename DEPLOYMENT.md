@@ -28,6 +28,8 @@ without Docker, see [README.md](./README.md).
 | `EXPMS_SMTP_USE_SSL` | `false` | `true` for implicit TLS (port 465), `false` for STARTTLS (port 587) |
 | `EXPMS_SMTP_FROM_EMAIL` | *(empty)* | Sender address — must be a mailbox/alias your relay is allowed to send as |
 | `EXPMS_SMTP_FROM_NAME` | `Expense & Payment Management System` | Sender display name |
+| `EXPMS_MAIL_RELAY_URL` | *(empty)* | HTTP mail relay URL (`scripts/cpanel-mail-relay.php`) — when set, used INSTEAD of the SMTP settings above. Needed on hosts that block outbound SMTP (Railway confirmed). |
+| `EXPMS_MAIL_RELAY_SECRET` | *(empty)* | Shared secret matching `RELAY_SECRET` in the PHP script |
 
 Copy `.env.example` to `.env` and fill in real values. `.env` is
 gitignored — never commit it.
@@ -144,6 +146,17 @@ wherever they were written; only new uploads follow the new setting.
    EXPMS_SMTP_PASSWORD=<the mailbox password>
    EXPMS_SMTP_USE_SSL=true
    EXPMS_SMTP_FROM_EMAIL=expms@yourdomain.com
+   ```
+
+   **Railway blocks outbound SMTP** (confirmed: both port 465 and 587 time
+   out from a Railway-hosted app, even with correct credentials that work
+   from anywhere else). If your mail server is on cPanel, use the HTTP
+   relay instead — see `scripts/cpanel-mail-relay.php` for the one-time
+   setup on your mail server, then set just these two variables (they take
+   priority over all the `EXPMS_SMTP_*` ones above):
+   ```
+   EXPMS_MAIL_RELAY_URL=https://yourdomain.com/relay-<random-path>/
+   EXPMS_MAIL_RELAY_SECRET=<the secret you set in the PHP script>
    ```
 4. **Volumes** — add a volume mounted at `/data` so the SQLite database
    (and local uploads, if using `EXPMS_STORAGE_TYPE=local`) survive

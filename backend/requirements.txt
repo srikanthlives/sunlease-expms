@@ -27,3 +27,7 @@ openpyxl==3.1.5
 
 # Loads .env into the process environment for local/bare-metal dev (see app/core/config.py)
 python-dotenv==1.2.2
+
+# HTTP mail relay client (services/email_service.py) - posts to scripts/cpanel-mail-relay.php
+# when EXPMS_MAIL_RELAY_URL is set, needed on hosts (e.g. Railway) that block outbound SMTP.
+requests==2.34.2

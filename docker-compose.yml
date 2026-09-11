@@ -43,6 +43,12 @@ services:
       EXPMS_SMTP_FROM_EMAIL: ${EXPMS_SMTP_FROM_EMAIL:-}
       EXPMS_SMTP_FROM_NAME: ${EXPMS_SMTP_FROM_NAME:-Expense & Payment Management System}
 
+      # Optional HTTP mail relay (scripts/cpanel-mail-relay.php) - takes
+      # priority over the SMTP settings above when set. Needed on hosts
+      # that block outbound SMTP (e.g. Railway).
+      EXPMS_MAIL_RELAY_URL: ${EXPMS_MAIL_RELAY_URL:-}
+      EXPMS_MAIL_RELAY_SECRET: ${EXPMS_MAIL_RELAY_SECRET:-}
+
     volumes:
       - ./data:/data
 

@@ -81,6 +81,15 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = os.environ.get("EXPMS_SMTP_FROM_EMAIL", "")
     SMTP_FROM_NAME: str = os.environ.get("EXPMS_SMTP_FROM_NAME", "Expense & Payment Management System")
 
+    # Optional HTTP mail relay (see scripts/cpanel-mail-relay.php) - used
+    # INSTEAD of direct SMTP whenever set. Needed on platforms that block
+    # outbound SMTP ports (confirmed on Railway - both 465 and 587 time out):
+    # this posts over HTTPS to a small PHP script hosted on the SAME server
+    # as the mailbox, which sends the mail locally instead of over a
+    # network hop Railway blocks.
+    MAIL_RELAY_URL: str = os.environ.get("EXPMS_MAIL_RELAY_URL", "")
+    MAIL_RELAY_SECRET: str = os.environ.get("EXPMS_MAIL_RELAY_SECRET", "")
+
     # CORS Origins
     _cors_origins = os.environ.get("EXPMS_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     CORS_ORIGINS: ClassVar[list] = [origin.strip() for origin in _cors_origins.split(",")]
