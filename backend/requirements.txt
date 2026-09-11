@@ -24,3 +24,6 @@ Pillow==10.4.0
 
 # Bulk expense import from Excel (services/bulk_import_service.py)
 openpyxl==3.1.5
+
+# Loads .env into the process environment for local/bare-metal dev (see app/core/config.py)
+python-dotenv==1.2.2

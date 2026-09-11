@@ -1,6 +1,17 @@
 import os
 from typing import ClassVar
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+# Every setting below reads its value via os.environ.get(...) at class-body
+# eval time (not pydantic-settings' own env-file support), so the .env file
+# has to be loaded into the process environment BEFORE that happens - this
+# is what actually makes `.env` work for local/bare-metal dev (`uvicorn
+# app.main:app` run from backend/). In Docker this is a no-op: the compose
+# file already injects real container env vars directly (no .env file
+# exists inside the image), and load_dotenv() never overrides a variable
+# that's already set - so nothing here can clobber those.
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
 
 
 class Settings(BaseSettings):
