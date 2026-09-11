@@ -7,7 +7,7 @@ import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDat
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Trash2, Pencil, FileDown } from "lucide-react";
+import { Plus, X, Trash2, Pencil, FileDown, Mail, CheckCircle2 } from "lucide-react";
 
 const CLAIM_STATUSES = ["DRAFT", "SUBMITTED", "PENDING_ACCOUNTS_APPROVAL", "APPROVED", "REJECTED"];
 
@@ -115,6 +115,11 @@ export function ClaimDetail() {
   const [showReject, setShowReject] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailTo, setEmailTo] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailSentTo, setEmailSentTo] = useState("");
   const navigate = useNavigate();
 
   function load() { client.get(`/claims/${id}`).then((res) => setClaim(res.data)); }
@@ -188,6 +193,23 @@ export function ClaimDetail() {
     }
   }
 
+  async function sendEmail(e) {
+    e.preventDefault();
+    setEmailBusy(true);
+    setEmailError("");
+    setEmailSentTo("");
+    try {
+      await client.post(`/claims/${id}/email-pdf`, { email: emailTo });
+      setEmailSentTo(emailTo);
+      setShowEmailForm(false);
+      setEmailTo("");
+    } catch (err) {
+      setEmailError(apiErrorMessage(err));
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6 w-full">
       <Link to="/claims" className="text-sm text-brand-600 hover:underline">← Back to claims</Link>
@@ -200,9 +222,31 @@ export function ClaimDetail() {
           <Button type="button" variant="outline" onClick={downloadPdf} disabled={downloadingPdf}>
             <FileDown size={15} /> {downloadingPdf ? "Preparing…" : "Download PDF"}
           </Button>
+          <Button type="button" variant="outline" onClick={() => { setShowEmailForm((s) => !s); setEmailError(""); }}>
+            <Mail size={15} /> Send Email
+          </Button>
           <StatusBadge status={claim.status} />
         </div>
       </div>
+
+      {showEmailForm && (
+        <Card className="max-w-md">
+          <form onSubmit={sendEmail} className="flex items-end gap-3">
+            <div className="flex-1">
+              <Input label="Send PDF to email address" type="email" required value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)} placeholder="name@example.com" autoFocus />
+            </div>
+            <Button type="submit" disabled={emailBusy}>{emailBusy ? "Sending…" : "Send"}</Button>
+            <Button type="button" variant="ghost" onClick={() => { setShowEmailForm(false); setEmailError(""); }}>Cancel</Button>
+          </form>
+          {emailError && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2 mt-3">{emailError}</div>}
+        </Card>
+      )}
+      {emailSentTo && !showEmailForm && (
+        <div className="text-sm text-ok bg-ok/10 rounded-md px-3 py-2 inline-flex items-center gap-1.5">
+          <CheckCircle2 size={14} /> Emailed to {emailSentTo}
+        </div>
+      )}
 
       {stageLabel && (
         <div className="text-xs text-ink/50 bg-ink/5 rounded-md px-3 py-2 inline-block">{stageLabel}</div>

@@ -32,6 +32,17 @@ services:
       EXPMS_DOCUMENT_FOLDER_PAYMENT: ${EXPMS_DOCUMENT_FOLDER_PAYMENT:-payments}
       EXPMS_DOCUMENT_FOLDER_CLAIM: ${EXPMS_DOCUMENT_FOLDER_CLAIM:-employee-claims}
 
+      # SMTP relay for "Email PDF" on Employee Claims (see DEPLOYMENT.md) -
+      # point at your own domain's mail server. Leave EXPMS_SMTP_HOST unset
+      # to disable email sending.
+      EXPMS_SMTP_HOST: ${EXPMS_SMTP_HOST:-}
+      EXPMS_SMTP_PORT: ${EXPMS_SMTP_PORT:-587}
+      EXPMS_SMTP_USERNAME: ${EXPMS_SMTP_USERNAME:-}
+      EXPMS_SMTP_PASSWORD: ${EXPMS_SMTP_PASSWORD:-}
+      EXPMS_SMTP_USE_SSL: ${EXPMS_SMTP_USE_SSL:-false}
+      EXPMS_SMTP_FROM_EMAIL: ${EXPMS_SMTP_FROM_EMAIL:-}
+      EXPMS_SMTP_FROM_NAME: ${EXPMS_SMTP_FROM_NAME:-Expense & Payment Management System}
+
     volumes:
       - ./data:/data
 

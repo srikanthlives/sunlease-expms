@@ -22,6 +22,12 @@ without Docker, see [README.md](./README.md).
 | `EXPMS_DOCUMENT_FOLDER_CLAIM` | `employee-claims` | Top-level folder for employee claim attachments (overall + per-line proof) |
 | `EXPMS_MAX_UPLOAD_SIZE_MB` | `15` | |
 | `EXPMS_CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
+| `EXPMS_SMTP_HOST` | *(empty)* | Your domain's mail server. Leave blank to disable the "Email PDF" button (it fails with a clear 503 instead of crashing). |
+| `EXPMS_SMTP_PORT` | `587` | `587` (STARTTLS) or `465` (implicit TLS, needs `EXPMS_SMTP_USE_SSL=true`) |
+| `EXPMS_SMTP_USERNAME` / `EXPMS_SMTP_PASSWORD` | *(empty)* | Mailbox credentials for the relay |
+| `EXPMS_SMTP_USE_SSL` | `false` | `true` for implicit TLS (port 465), `false` for STARTTLS (port 587) |
+| `EXPMS_SMTP_FROM_EMAIL` | *(empty)* | Sender address — must be a mailbox/alias your relay is allowed to send as |
+| `EXPMS_SMTP_FROM_NAME` | `Expense & Payment Management System` | Sender display name |
 
 Copy `.env.example` to `.env` and fill in real values. `.env` is
 gitignored — never commit it.

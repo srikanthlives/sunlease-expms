@@ -57,6 +57,19 @@ class Settings(BaseSettings):
     )
     ALLOWED_UPLOAD_MIME_TYPES: ClassVar[set] = {mime.strip() for mime in _allowed_mime_types.split(",")}
 
+    # SMTP relay (used by services/email_service.py, e.g. "Email PDF" on
+    # employee claims) - point this at the org's own mail server. Sending is
+    # a no-op with a clear error if SMTP_HOST is left blank, so the app
+    # still runs fine without it configured.
+    SMTP_HOST: str = os.environ.get("EXPMS_SMTP_HOST", "")
+    SMTP_PORT: int = int(os.environ.get("EXPMS_SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.environ.get("EXPMS_SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.environ.get("EXPMS_SMTP_PASSWORD", "")
+    # STARTTLS (typical for port 587) vs implicit TLS/SSL from connect (typical for port 465).
+    SMTP_USE_SSL: bool = os.environ.get("EXPMS_SMTP_USE_SSL", "false").lower() == "true"
+    SMTP_FROM_EMAIL: str = os.environ.get("EXPMS_SMTP_FROM_EMAIL", "")
+    SMTP_FROM_NAME: str = os.environ.get("EXPMS_SMTP_FROM_NAME", "Expense & Payment Management System")
+
     # CORS Origins
     _cors_origins = os.environ.get("EXPMS_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
     CORS_ORIGINS: ClassVar[list] = [origin.strip() for origin in _cors_origins.split(",")]

@@ -9,8 +9,8 @@ from app.core.deps import get_current_user, require_approver
 from app.db.session import get_db
 from app.models.models import EmployeeClaim, Employee, Project, User
 from app.models.enums import ClaimStatus, RoleName
-from app.schemas.transactions import ClaimCreate, ClaimUpdate, ClaimOut, RejectRequest
-from app.services import claim_service, project_scope_service, claim_pdf_service
+from app.schemas.transactions import ClaimCreate, ClaimUpdate, ClaimOut, RejectRequest, EmailPdfRequest
+from app.services import claim_service, project_scope_service, claim_pdf_service, email_service
 
 router = APIRouter(prefix="/api/v1/claims", tags=["claims"])
 
@@ -158,6 +158,25 @@ async def download_claim_pdf(claim_id: int, db: Session = Depends(get_db), user:
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{c.claim_number}.pdf"'},
     )
+
+
+@router.post("/{claim_id}/email-pdf")
+async def email_claim_pdf(claim_id: int, payload: EmailPdfRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Emails the same combined PDF as download-pdf to an address the
+    caller types in, via the org's own SMTP relay (see services/email_service.py)."""
+    c = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_id).first()
+    if not c:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Claim not found")
+    if not _can_view(db, c, user):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this claim")
+    pdf_bytes = await claim_pdf_service.build_claim_pdf(db, c)
+    email_service.send_email_with_attachment(
+        to_email=payload.email,
+        subject=f"Employee Claim {c.claim_number}",
+        body=f"Attached is the PDF for claim {c.claim_number} (status: {c.status}).\n\nSent by {user.full_name or user.username} via the Expense & Payment Management System.",
+        attachment_bytes=pdf_bytes, attachment_filename=f"{c.claim_number}.pdf",
+    )
+    return {"sent": True, "email": payload.email}
 
 
 @router.put("/{claim_id}", response_model=ClaimOut)

@@ -1,7 +1,7 @@
 import datetime as dt
 from decimal import Decimal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +180,10 @@ class ClaimOut(BaseModel):
 
 class RejectRequest(BaseModel):
     reason: str
+
+
+class EmailPdfRequest(BaseModel):
+    email: EmailStr
 
 
 # ---------------------------------------------------------------------------
