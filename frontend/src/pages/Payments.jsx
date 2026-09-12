@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
@@ -6,9 +6,57 @@ import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
-import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff } from "lucide-react";
+import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff, Columns3 } from "lucide-react";
 
 const PAYMENT_MODES = ["NEFT", "RTGS", "IMPS", "UPI", "CASH", "CHEQUE"];
+
+// Columns the user can show/hide via the "Columns" picker. payment_number,
+// payment_date (both sticky-left) and __actions stay mandatory - excluded
+// here so they're always rendered regardless of what's hidden.
+const TOGGLEABLE_COLUMNS = [
+  { key: "payee", label: "Payee" },
+  { key: "account_id", label: "Account" },
+  { key: "payment_mode", label: "Mode" },
+  { key: "reference_number", label: "Reference / UTR" },
+  { key: "amount", label: "Amount" },
+  { key: "allocations", label: "Allocated To" },
+  { key: "remarks", label: "Remarks" },
+  { key: "is_cancelled", label: "Status" },
+  { key: "is_verified", label: "Verified" },
+  { key: "attachments", label: "Receipt" },
+];
+const HIDDEN_COLUMNS_STORAGE_KEY = "expms_payments_hidden_columns";
+
+function ColumnsPicker({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="outline" onClick={() => setOpen((o) => !o)}>
+        <Columns3 size={16} /> Columns
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-ink/15 rounded-md shadow-lg py-2">
+          {TOGGLEABLE_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 cursor-pointer">
+              <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => onToggle(c.key)} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Payments() {
   const { user } = useAuth();
@@ -24,9 +72,21 @@ export default function Payments() {
   const [projectId, setProjectId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [subCategoryId, setSubCategoryId] = useState("");
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
+  });
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
+
+  function toggleColumn(key) {
+    setHiddenCols((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   async function toggleVerify(r) {
     await client.post(`/payments/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
@@ -121,29 +181,58 @@ export default function Payments() {
       </Card>
 
       <Card>
+        <div className="flex justify-end mb-2">
+          <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
+        </div>
         <Table
+          compact
+          stickyHeader
           columns={[
-            { key: "payment_number", header: "Payment #" },
-            { key: "payment_date", header: "Date", render: (r) => formatDate(r.payment_date) },
-            { key: "payee", header: "Payee", render: (r) => payeeOf(r) },
-            { key: "account_id", header: "Account", render: (r) => masters.accounts.find((a) => a.id === r.account_id)?.account_name || "—" },
-            { key: "payment_mode", header: "Mode" },
-            { key: "reference_number", header: "Reference / UTR", render: (r) => r.reference_number || "—" },
-            { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
+            { key: "payment_number", header: "Payment #", stickyLeft: true, stickyWidth: 130, render: (r) => <span className="whitespace-nowrap">{r.payment_number}</span> },
+            {
+              key: "payment_date", header: "Date", stickyLeft: true, stickyWidth: 110, sortable: true,
+              render: (r) => <span className="whitespace-nowrap">{formatDate(r.payment_date)}</span>,
+            },
+            {
+              key: "payee", header: "Payee", sortable: true,
+              render: (r) => { const text = payeeOf(r); return <span title={text} className="block max-w-[180px] truncate">{text}</span>; },
+            },
+            {
+              key: "account_id", header: "Account", sortable: true,
+              sortAccessor: (r) => masters.accounts.find((a) => a.id === r.account_id)?.account_name || "",
+              render: (r) => { const text = masters.accounts.find((a) => a.id === r.account_id)?.account_name || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
+            },
+            { key: "payment_mode", header: "Mode", sortable: true, render: (r) => <span className="whitespace-nowrap">{r.payment_mode}</span> },
+            {
+              key: "reference_number", header: "Reference / UTR",
+              render: (r) => { const text = r.reference_number || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
+            },
+            {
+              key: "amount", header: "Amount", sortable: true, align: "right",
+              render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.amount)}</span>,
+            },
             {
               key: "allocations", header: "Allocated To",
               render: (r) => {
                 const text = r.allocations.map((a) => a.expense_number || `#${a.expense_id}`).join(", ");
-                return <span className="block whitespace-nowrap">{text}</span>;
+                return <span title={text} className="block max-w-[200px] truncate">{text}</span>;
               },
             },
-            { key: "remarks", header: "Remarks", render: (r) => r.remarks || "—" },
-            { key: "is_cancelled", header: "Status", render: (r) => r.is_cancelled ? <span className="text-danger text-xs font-medium">CANCELLED</span> : <span className="text-ok text-xs font-medium">ACTIVE</span> },
             {
-              key: "is_verified", header: "Verified",
+              key: "remarks", header: "Remarks",
+              render: (r) => { const text = r.remarks || "—"; return <span title={text} className="block max-w-[160px] truncate">{text}</span>; },
+            },
+            {
+              key: "is_cancelled", header: "Status", sortable: true,
+              render: (r) => r.is_cancelled
+                ? <span className="text-danger text-xs font-medium whitespace-nowrap">CANCELLED</span>
+                : <span className="text-ok text-xs font-medium whitespace-nowrap">ACTIVE</span>,
+            },
+            {
+              key: "is_verified", header: "Verified", sortable: true,
               render: (r) => r.is_verified
                 ? <span className="text-xs text-ok whitespace-nowrap" title={r.verified_by_name ? `Verified by ${r.verified_by_name}` : ""}>✓ Verified</span>
-                : <span className="text-xs text-ink/40">—</span>,
+                : <span className="text-xs text-ink/40 whitespace-nowrap">—</span>,
             },
             {
               key: "attachments", header: "Receipt",
@@ -170,7 +259,7 @@ export default function Payments() {
                 );
               },
             }] : []),
-          ]}
+          ].filter((c) => ["payment_number", "payment_date", "__actions"].includes(c.key) || !hiddenCols.has(c.key))}
           rows={payments}
         />
       </Card>
