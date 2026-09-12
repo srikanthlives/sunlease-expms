@@ -1,14 +1,15 @@
+import datetime as dt
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_accounts, require_non_employee, require_admin
 from app.db.session import get_db
-from app.models.models import Expense, User
+from app.models.models import Expense, User, Project, ExpenseCategory, ExpenseSubCategory, Vendor, Employee
 from app.schemas.transactions import DirectExpenseCreate, ExpenseOut, CancelRequest
 from app.schemas.edit_requests import ExpenseUpdate
-from app.services import expense_service, edit_request_service, project_scope_service
+from app.services import expense_service, edit_request_service, project_scope_service, expense_pdf_service
 from app.services.payment_status_service import get_paid_amount
 from app.models.enums import SourceType, RoleName
 
@@ -203,6 +204,90 @@ def expenses_summary(
         "paid_amount": paid_amount,
         "balance_due": total_amount - paid_amount,
     }
+
+
+def _describe_filters(
+    db: Session, *, project_id, vendor_id, employee_id, category_id, sub_category_id,
+    source_type, payment_status, status_, date_from, date_to,
+) -> str:
+    """Human-readable summary of the active filters, printed at the top of
+    the PDF so the export is self-documenting (what you see is exactly what
+    was selected on screen when it was generated)."""
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if source_type:
+        parts.append(f"Source: {source_type.replace('_', ' ')}")
+    if project_id:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        parts.append(f"Project: {p.name if p else project_id}")
+    if vendor_id:
+        v = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        parts.append(f"Vendor: {v.vendor_name if v else vendor_id}")
+    if employee_id:
+        e = db.query(Employee).filter(Employee.id == employee_id).first()
+        parts.append(f"Employee: {e.employee_name if e else employee_id}")
+    if category_id:
+        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
+        parts.append(f"Head: {c.name if c else category_id}")
+    if sub_category_id:
+        s = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id).first()
+        parts.append(f"Sub-Head: {s.name if s else sub_category_id}")
+    if payment_status:
+        parts.append(f"Payment: {payment_status.replace('_', ' ')}")
+    if status_:
+        parts.append(f"Status: {status_}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all expenses)"
+
+
+@router.get("/export-pdf", dependencies=[Depends(require_non_employee)])
+def export_expenses_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    project_id: int | None = None, vendor_id: int | None = None, employee_id: int | None = None,
+    category_id: int | None = None, sub_category_id: int | None = None,
+    source_type: str | None = None, payment_status: str | None = None, status_: str | None = Query(None, alias="status"),
+    date_from: str | None = None, date_to: str | None = None,
+    columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
+):
+    """PDF export of the Expenses list - same filters and the same set of
+    visible columns as the on-screen table (whatever the Columns picker has
+    showing), not a fixed report layout. Always the full filtered result
+    set, not just the current page."""
+    q = _apply_filters(
+        db.query(Expense), project_id=project_id, vendor_id=vendor_id, employee_id=employee_id,
+        category_id=category_id, sub_category_id=sub_category_id, source_type=source_type,
+        payment_status=payment_status, status_=status_, date_from=date_from, date_to=date_to,
+    )
+    if user.role.name == RoleName.ACCOUNTS:
+        assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+        q = q.filter(Expense.project_id.in_(assigned)) if assigned else q.filter(False)
+    rows = q.order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
+
+    total_amount = sum((e.total_amount for e in rows), Decimal("0"))
+    base_amount = sum((e.base_amount for e in rows), Decimal("0"))
+    gst_amount = sum((e.gst_amount for e in rows), Decimal("0"))
+    other_amount = sum((e.other_amount for e in rows), Decimal("0"))
+    paid_amount = sum((get_paid_amount(db, e.id) for e in rows), Decimal("0"))
+    summary = {
+        "count": len(rows), "total_amount": total_amount, "base_amount": base_amount,
+        "gst_amount": gst_amount, "other_amount": other_amount,
+        "paid_amount": paid_amount, "balance_due": total_amount - paid_amount,
+    }
+
+    filters_desc = _describe_filters(
+        db, project_id=project_id, vendor_id=vendor_id, employee_id=employee_id,
+        category_id=category_id, sub_category_id=sub_category_id, source_type=source_type,
+        payment_status=payment_status, status_=status_, date_from=date_from, date_to=date_to,
+    )
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
+
+    pdf_bytes = expense_pdf_service.build_expenses_pdf(
+        db, rows, col_list, filters_desc, summary, user.full_name or user.username,
+    )
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="expenses-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut, dependencies=[Depends(require_non_employee)])

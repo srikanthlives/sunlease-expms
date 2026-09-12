@@ -7,7 +7,7 @@ import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Pencil, ChevronLeft, ChevronRight, Columns3 } from "lucide-react";
+import { Plus, X, Pencil, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
 
 const SOURCE_TYPES = ["DIRECT_EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
@@ -88,6 +88,7 @@ export default function Expenses() {
   const [hiddenCols, setHiddenCols] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
   });
+  const [exporting, setExporting] = useState(false);
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
@@ -95,6 +96,30 @@ export default function Expenses() {
   async function toggleVerify(r) {
     await client.post(`/expenses/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
     load();
+  }
+
+  // Exports exactly what's on screen: the active filters plus whatever
+  // columns the Columns picker currently has visible ("attachments" has no
+  // PDF equivalent, so it's dropped even if shown).
+  async function downloadPdf() {
+    const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => k !== "attachments" && !hiddenCols.has(k));
+    setExporting(true);
+    try {
+      const res = await client.get("/expenses/export-pdf", {
+        params: { ...filterParams(), columns: visibleColumns.join(",") },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `expenses-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
   }
 
   function toggleColumn(key) {
@@ -204,7 +229,10 @@ export default function Expenses() {
       </Card>
 
       <Card>
-        <div className="flex justify-end mb-2">
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
           <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
         </div>
         <Table
