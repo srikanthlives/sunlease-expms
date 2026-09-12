@@ -30,6 +30,10 @@ class ExpenseOut(BaseModel):
     payment_status: str
     paid_amount: Decimal = Decimal("0")
     balance_due: Decimal = Decimal("0")
+    is_verified: bool = False
+    verified_by: int | None = None
+    verified_by_name: str | None = None
+    verified_at: dt.datetime | None = None
     created_at: dt.datetime
 
     class Config:
@@ -112,6 +116,10 @@ class InvoiceOut(BaseModel):
     total_amount: Decimal
     status: str
     expense_id: int
+    is_verified: bool = False
+    verified_by: int | None = None
+    verified_by_name: str | None = None
+    verified_at: dt.datetime | None = None
 
     class Config:
         from_attributes = True
@@ -228,6 +236,10 @@ class PaymentOut(BaseModel):
     reference_number: str | None = None
     remarks: str | None = None
     is_cancelled: bool
+    is_verified: bool = False
+    verified_by: int | None = None
+    verified_by_name: str | None = None
+    verified_at: dt.datetime | None = None
     allocations: list[AllocationOut] = []
 
     class Config:

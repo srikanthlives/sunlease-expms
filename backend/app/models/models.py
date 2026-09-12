@@ -261,6 +261,16 @@ class Expense(Base):
     status = Column(String(20), default="ACTIVE")  # ACTIVE / CANCELLED
     payment_status = Column(String(20), default="UNPAID")  # derived; never set directly by API
 
+    # Once Admin/Super Admin marks this verified, it is frozen against direct
+    # edits by Accounts - any further change must go through the
+    # EditRequest approval workflow (Admin/Super Admin can still edit
+    # directly regardless of verification). Covers invoices too, since every
+    # Invoice resolves 1:1 into an Expense (see Invoice.expense) and there is
+    # no separate is_verified column on Invoice itself.
+    is_verified = Column(Boolean, default=False)
+    verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -272,6 +282,7 @@ class Expense(Base):
     sub_category = relationship("ExpenseSubCategory", foreign_keys=[sub_category_id])
     allocations = relationship("PaymentAllocation", back_populates="expense")
     documents = relationship("Document", back_populates="expense", foreign_keys="Document.expense_id")
+    verifier = relationship("User", foreign_keys=[verified_by])
 
 
 class Invoice(Base):
@@ -380,6 +391,13 @@ class Payment(Base):
     remarks = Column(Text)
     is_cancelled = Column(Boolean, default=False)
 
+    # Same verification freeze as Expense - once Admin/Super Admin verifies a
+    # payment, Accounts can no longer edit it directly and must go through
+    # an EditRequest.
+    is_verified = Column(Boolean, default=False)
+    verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -388,6 +406,7 @@ class Payment(Base):
     employee = relationship("Employee", foreign_keys=[employee_id])
     account = relationship("Account", foreign_keys=[account_id])
     allocations = relationship("PaymentAllocation", back_populates="payment", cascade="all, delete-orphan")
+    verifier = relationship("User", foreign_keys=[verified_by])
 
 
 class PaymentAllocation(Base):

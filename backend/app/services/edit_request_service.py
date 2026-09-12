@@ -203,13 +203,71 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
 
 
 # ---------------------------------------------------------------------------
-# Direct edit (Admin / Super Admin) - applies immediately, no approval hop.
+# Verification (Admin / Super Admin freeze) - once verified, an Expense or
+# Payment (and, via its linked Expense, an Invoice) can no longer be edited
+# directly by Accounts; only Admin/Super Admin direct edits or the
+# EditRequest approval workflow can change it after that point.
+# ---------------------------------------------------------------------------
+
+def _verification_target(entity_type: str, entity):
+    """The row that actually carries is_verified for a given entity. Invoice
+    has no column of its own - it proxies to its linked Expense, the single
+    source of truth those two rows share."""
+    if entity_type == EditableEntityType.INVOICE:
+        return entity.expense
+    return entity
+
+
+def is_locked_for_accounts(entity_type: str, entity) -> bool:
+    target = _verification_target(entity_type, entity)
+    return bool(target and target.is_verified)
+
+
+def set_verification(db: Session, entity_type: str, entity_id: int, actor: User, verified: bool):
+    entity = get_entity(db, entity_type, entity_id)
+    target = _verification_target(entity_type, entity)
+    if target is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This record has nothing to verify")
+
+    target.is_verified = verified
+    target.verified_by = actor.id if verified else None
+    target.verified_at = dt.datetime.utcnow() if verified else None
+    db.add(target)
+    db.flush()
+
+    action = AuditAction.VERIFY if verified else AuditAction.UNVERIFY
+    audit_service.record(db, entity_type, entity_id, action, actor.id, {})
+    return entity
+
+
+# ---------------------------------------------------------------------------
+# Direct edit (Admin / Super Admin) - applies immediately, no approval hop,
+# regardless of verification state (Admin is the one who verifies, and
+# retains the ability to correct verified records directly).
 # ---------------------------------------------------------------------------
 
 def direct_edit(db: Session, entity_type: str, entity_id: int, changes: dict, actor: User):
     entity = get_entity(db, entity_type, entity_id)
     apply_changes(db, entity_type, entity, changes, actor.id)
     audit_service.record(db, entity_type, entity_id, AuditAction.UPDATE, actor.id, {"changes": changes, "direct": True})
+    return entity
+
+
+# ---------------------------------------------------------------------------
+# Accounts direct edit - full edit rights while the record is unverified;
+# once Admin/Super Admin verifies it, Accounts is locked out and must go
+# through POST /edit-requests instead.
+# ---------------------------------------------------------------------------
+
+def accounts_edit(db: Session, entity_type: str, entity_id: int, changes: dict, actor: User):
+    entity = get_entity(db, entity_type, entity_id)
+    if is_locked_for_accounts(entity_type, entity):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This record has been verified by Admin and is now locked - submit an edit request for approval instead",
+        )
+    apply_changes(db, entity_type, entity, changes, actor.id)
+    audit_service.record(db, entity_type, entity_id, AuditAction.UPDATE, actor.id, {"changes": changes, "direct": True, "by_accounts": True})
     return entity
 
 

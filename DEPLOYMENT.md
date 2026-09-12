@@ -155,9 +155,13 @@ wherever they were written; only new uploads follow the new setting.
    setup on your mail server, then set just these two variables (they take
    priority over all the `EXPMS_SMTP_*` ones above):
    ```
-   EXPMS_MAIL_RELAY_URL=https://yourdomain.com/relay-<random-path>/
+   EXPMS_MAIL_RELAY_URL=https://yourdomain.com/relay-<random-path>/cpanel-mail-relay.php
    EXPMS_MAIL_RELAY_SECRET=<the secret you set in the PHP script>
    ```
+   Point the URL directly at the `.php` file itself (not just the folder) —
+   requesting the bare folder returns cPanel's directory listing instead of
+   running the script (that's what "Expecting value: line 1 column 1" in
+   the logs means: the relay call got an HTML index page back, not JSON).
 4. **Volumes** — add a volume mounted at `/data` so the SQLite database
    (and local uploads, if using `EXPMS_STORAGE_TYPE=local`) survive
    redeploys. For production-grade Postgres instead, add Railway's

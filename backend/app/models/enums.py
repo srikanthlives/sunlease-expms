@@ -79,6 +79,8 @@ class AuditAction:
     REJECT = "REJECT"
     PAY = "PAY"
     LOGIN = "LOGIN"
+    VERIFY = "VERIFY"
+    UNVERIFY = "UNVERIFY"
 
 
 class EditRequestStatus:

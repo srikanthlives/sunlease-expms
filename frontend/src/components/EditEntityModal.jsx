@@ -61,7 +61,11 @@ const LABELS = { EXPENSE: "Expense", INVOICE: "Invoice", PAYMENT: "Payment" };
 export default function EditEntityModal({ entityType, entity, onClose, onSaved }) {
   const { user } = useAuth();
   const masters = useMasters();
-  const isDirect = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
+  const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
+  // Accounts edits directly and in full while the record is unverified;
+  // once Admin/Super Admin verifies it, Accounts drops to the
+  // edit-request/approval path (Admin always edits directly, regardless).
+  const isDirect = isAdmin || !entity.is_verified;
   const fields = FIELD_SETS[entityType](masters);
 
   const [form, setForm] = useState(Object.fromEntries(fields.map((f) => [f.key, entity[f.key] ?? ""])));
@@ -136,6 +140,8 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
         <p className="text-xs text-ink/50 mb-4">
           {isDirect
             ? "Changes apply immediately."
+            : entity.is_verified
+            ? "This record has been verified by Admin and is locked - your changes will be submitted for approval before they take effect."
             : "Your changes will be submitted to an Admin for approval before they take effect."}
         </p>
         <form onSubmit={submit} className="space-y-4">

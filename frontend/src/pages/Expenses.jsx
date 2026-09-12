@@ -32,6 +32,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: "description", label: "Description" },
   { key: "payment_status", label: "Payment Status" },
   { key: "status", label: "Status" },
+  { key: "is_verified", label: "Verified" },
   { key: "attachments", label: "Proof / Bill" },
 ];
 const HIDDEN_COLUMNS_STORAGE_KEY = "expms_expenses_hidden_columns";
@@ -89,6 +90,12 @@ export default function Expenses() {
   });
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
+  const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
+
+  async function toggleVerify(r) {
+    await client.post(`/expenses/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
+    load();
+  }
 
   function toggleColumn(key) {
     setHiddenCols((s) => {
@@ -270,6 +277,12 @@ export default function Expenses() {
             },
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             {
+              key: "is_verified", header: "Verified",
+              render: (r) => r.is_verified
+                ? <span className="text-xs text-ok whitespace-nowrap" title={r.verified_by_name ? `Verified by ${r.verified_by_name}` : ""}>✓ Verified</span>
+                : <span className="text-xs text-ink/40">—</span>,
+            },
+            {
               key: "attachments", header: "Proof / Bill",
               render: (r) =>
                 r.source_type === "INVOICE" ? (
@@ -288,7 +301,18 @@ export default function Expenses() {
                 </button>
               ),
             }] : []),
-          ].filter((c) => c.key === "expense_number" || c.key === "expense_date" || c.key === "__edit" || !hiddenCols.has(c.key))}
+            ...(isAdmin ? [{
+              key: "__verify", header: "",
+              render: (r) => r.status === "ACTIVE" && (
+                <button
+                  type="button" onClick={() => toggleVerify(r)}
+                  className={`text-xs inline-flex items-center gap-1 hover:underline whitespace-nowrap ${r.is_verified ? "text-ink/50" : "text-ok"}`}
+                >
+                  {r.is_verified ? "Unverify" : "Verify"}
+                </button>
+              ),
+            }] : []),
+          ].filter((c) => ["expense_number", "expense_date", "__edit", "__verify"].includes(c.key) || !hiddenCols.has(c.key))}
           rows={expenses}
           footer={summary && {
             expense_number: `${summary.count} expense(s)`,

@@ -27,7 +27,7 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db), user: 
     )
     db.commit()
     db.refresh(payment)
-    return payment
+    return _to_out(payment)
 
 
 @router.get("", response_model=list[PaymentOut], dependencies=[Depends(require_non_employee)])
@@ -73,7 +73,13 @@ def list_payments(
         if not assigned:
             return []
         rows = [p for p in rows if assigned & set(project_scope_service.payment_project_ids(db, p))]
-    return rows
+    return [_to_out(p) for p in rows]
+
+
+def _to_out(p: Payment) -> PaymentOut:
+    out = PaymentOut.model_validate(p)
+    out.verified_by_name = (p.verifier.full_name or p.verifier.username) if p.verifier else None
+    return out
 
 
 @router.get("/{payment_id}", response_model=PaymentOut, dependencies=[Depends(require_non_employee)])
@@ -83,20 +89,44 @@ def get_payment(payment_id: int, db: Session = Depends(get_db), user: User = Dep
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
     if user.role.name == RoleName.ACCOUNTS:
         project_scope_service.assert_payment_in_scope(db, user, p)
-    return p
+    return _to_out(p)
 
 
-@router.put("/{payment_id}", response_model=PaymentOut, dependencies=[Depends(require_admin)])
+@router.put("/{payment_id}", response_model=PaymentOut, dependencies=[Depends(require_accounts)])
 def update_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Direct edit - Admin/Super Admin only, applies immediately. Amount and
-    allocations are not editable here (by design - see CLAUDE.md); only
-    payment_date/account_id/payment_mode/reference_number/remarks. Accounts
-    proposes the same edit via POST /edit-requests instead."""
+    """Amount and allocations are not editable here (by design - see
+    CLAUDE.md); only payment_date/account_id/payment_mode/reference_number/
+    remarks. Admin/Super Admin edit directly and unconditionally. Accounts
+    may also edit directly until the payment is verified (see
+    POST .../verify), after which they must use POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    p = edit_request_service.direct_edit(db, "PAYMENT", payment_id, changes, user)
+    if user.role.name == RoleName.ACCOUNTS:
+        existing = db.query(Payment).filter(Payment.id == payment_id).first()
+        if not existing:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
+        project_scope_service.assert_payment_in_scope(db, user, existing)
+        p = edit_request_service.accounts_edit(db, "PAYMENT", payment_id, changes, user)
+    else:
+        p = edit_request_service.direct_edit(db, "PAYMENT", payment_id, changes, user)
     db.commit()
     db.refresh(p)
-    return p
+    return _to_out(p)
+
+
+@router.post("/{payment_id}/verify", response_model=PaymentOut, dependencies=[Depends(require_admin)])
+def verify_payment(payment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    p = edit_request_service.set_verification(db, "PAYMENT", payment_id, user, True)
+    db.commit()
+    db.refresh(p)
+    return _to_out(p)
+
+
+@router.post("/{payment_id}/unverify", response_model=PaymentOut, dependencies=[Depends(require_admin)])
+def unverify_payment(payment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    p = edit_request_service.set_verification(db, "PAYMENT", payment_id, user, False)
+    db.commit()
+    db.refresh(p)
+    return _to_out(p)
 
 
 @router.post("/{payment_id}/cancel", response_model=PaymentOut, dependencies=[Depends(require_accounts)])

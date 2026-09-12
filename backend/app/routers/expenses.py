@@ -20,6 +20,7 @@ def _to_out(db: Session, e: Expense) -> ExpenseOut:
     out = ExpenseOut.model_validate(e)
     out.paid_amount = paid
     out.balance_due = e.total_amount - paid
+    out.verified_by_name = (e.verifier.full_name or e.verifier.username) if e.verifier else None
     return out
 
 
@@ -214,13 +215,40 @@ def get_expense(expense_id: int, db: Session = Depends(get_db), user: User = Dep
     return _to_out(db, e)
 
 
-@router.put("/{expense_id}", response_model=ExpenseOut, dependencies=[Depends(require_admin)])
+@router.put("/{expense_id}", response_model=ExpenseOut, dependencies=[Depends(require_accounts)])
 def update_expense(expense_id: int, payload: ExpenseUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Direct edit - Admin/Super Admin only, applies immediately. Accounts
-    proposes the same edit via POST /edit-requests instead, which requires
-    Admin/Super Admin approval before it takes effect."""
+    """Admin/Super Admin edit directly and unconditionally. Accounts may also
+    edit directly, in full, as long as the expense hasn't been verified yet -
+    once Admin/Super Admin verifies it (see POST .../verify), Accounts is
+    locked out and must propose the same edit via POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    e = edit_request_service.direct_edit(db, "EXPENSE", expense_id, changes, user)
+    if user.role.name == RoleName.ACCOUNTS:
+        existing = db.query(Expense).filter(Expense.id == expense_id).first()
+        if not existing:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
+        project_scope_service.assert_project_in_scope(db, user, existing.project_id)
+        e = edit_request_service.accounts_edit(db, "EXPENSE", expense_id, changes, user)
+    else:
+        e = edit_request_service.direct_edit(db, "EXPENSE", expense_id, changes, user)
+    db.commit()
+    db.refresh(e)
+    return _to_out(db, e)
+
+
+@router.post("/{expense_id}/verify", response_model=ExpenseOut, dependencies=[Depends(require_admin)])
+def verify_expense(expense_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Admin/Super Admin freeze - once verified, Accounts can no longer edit
+    this expense directly and must go through the edit-request workflow."""
+    e = edit_request_service.set_verification(db, "EXPENSE", expense_id, user, True)
+    db.commit()
+    db.refresh(e)
+    return _to_out(db, e)
+
+
+@router.post("/{expense_id}/unverify", response_model=ExpenseOut, dependencies=[Depends(require_admin)])
+def unverify_expense(expense_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Reverses verify_expense, restoring Accounts' ability to edit directly."""
+    e = edit_request_service.set_verification(db, "EXPENSE", expense_id, user, False)
     db.commit()
     db.refresh(e)
     return _to_out(db, e)

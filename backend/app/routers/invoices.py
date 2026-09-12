@@ -17,10 +17,16 @@ router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
 def _to_out(inv: Invoice) -> InvoiceOut:
     # Invoice itself has no category/sub_category columns - they live on the
     # resolved Expense, so surface them from there for display/edit purposes.
+    # Verification is likewise borrowed from the linked Expense, the single
+    # source of truth those two rows share (Invoice has no is_verified column).
     out = InvoiceOut.model_validate(inv)
     if inv.expense:
         out.category_id = inv.expense.category_id
         out.sub_category_id = inv.expense.sub_category_id
+        out.is_verified = inv.expense.is_verified
+        out.verified_by = inv.expense.verified_by
+        out.verified_by_name = (inv.expense.verifier.full_name or inv.expense.verifier.username) if inv.expense.verifier else None
+        out.verified_at = inv.expense.verified_at
     return out
 
 
@@ -79,12 +85,39 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Dep
     return _to_out(inv)
 
 
-@router.put("/{invoice_id}", response_model=InvoiceOut, dependencies=[Depends(require_admin)])
+@router.put("/{invoice_id}", response_model=InvoiceOut, dependencies=[Depends(require_accounts)])
 def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Direct edit - Admin/Super Admin only, applies immediately. Accounts
-    proposes the same edit via POST /edit-requests instead."""
+    """Admin/Super Admin edit directly and unconditionally. Accounts may also
+    edit directly, in full, until the underlying expense is verified (see
+    POST /expenses/{id}/verify) - after that, Accounts must propose the same
+    edit via POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    inv = edit_request_service.direct_edit(db, "INVOICE", invoice_id, changes, user)
+    if user.role.name == RoleName.ACCOUNTS:
+        existing = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        if not existing:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+        project_scope_service.assert_project_in_scope(db, user, existing.project_id)
+        inv = edit_request_service.accounts_edit(db, "INVOICE", invoice_id, changes, user)
+    else:
+        inv = edit_request_service.direct_edit(db, "INVOICE", invoice_id, changes, user)
+    db.commit()
+    db.refresh(inv)
+    return _to_out(inv)
+
+
+@router.post("/{invoice_id}/verify", response_model=InvoiceOut, dependencies=[Depends(require_admin)])
+def verify_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Verifies the invoice's underlying Expense (the shared source of truth)
+    - once verified, Accounts can no longer edit this invoice directly."""
+    inv = edit_request_service.set_verification(db, "INVOICE", invoice_id, user, True)
+    db.commit()
+    db.refresh(inv)
+    return _to_out(inv)
+
+
+@router.post("/{invoice_id}/unverify", response_model=InvoiceOut, dependencies=[Depends(require_admin)])
+def unverify_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    inv = edit_request_service.set_verification(db, "INVOICE", invoice_id, user, False)
     db.commit()
     db.refresh(inv)
     return _to_out(inv)

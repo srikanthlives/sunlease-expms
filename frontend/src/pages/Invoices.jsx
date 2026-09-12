@@ -25,6 +25,12 @@ export default function Invoices() {
   const [invoiceStatus, setInvoiceStatus] = useState("");
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
+  const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
+
+  async function toggleVerify(r) {
+    await client.post(`/invoices/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
+    load();
+  }
 
   useEffect(() => {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
@@ -126,6 +132,12 @@ export default function Invoices() {
             { key: "total_amount", header: "Amount", align: "right", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
             {
+              key: "is_verified", header: "Verified",
+              render: (r) => r.is_verified
+                ? <span className="text-xs text-ok whitespace-nowrap" title={r.verified_by_name ? `Verified by ${r.verified_by_name}` : ""}>✓ Verified</span>
+                : <span className="text-xs text-ink/40">—</span>,
+            },
+            {
               key: "attachments", header: "Invoice / Bill",
               render: (r) => <Attachments documentType="INVOICE" invoiceId={r.id} compact label="Invoice/Bill" />,
             },
@@ -134,6 +146,17 @@ export default function Invoices() {
               render: (r) => r.status === "RECORDED" && (
                 <button type="button" onClick={() => setEditingInvoice(r)} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
                   <Pencil size={12} /> Edit
+                </button>
+              ),
+            }] : []),
+            ...(isAdmin ? [{
+              key: "__verify", header: "",
+              render: (r) => r.status === "RECORDED" && (
+                <button
+                  type="button" onClick={() => toggleVerify(r)}
+                  className={`text-xs inline-flex items-center gap-1 hover:underline whitespace-nowrap ${r.is_verified ? "text-ink/50" : "text-ok"}`}
+                >
+                  {r.is_verified ? "Unverify" : "Verify"}
                 </button>
               ),
             }] : []),
