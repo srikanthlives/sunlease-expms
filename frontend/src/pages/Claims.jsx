@@ -4,7 +4,7 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate } from "../components/ui";
-import DateRangePicker from "../components/DateRangePicker";
+import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
 import { Plus, X, Trash2, Pencil, FileDown, Mail, CheckCircle2 } from "lucide-react";
@@ -17,7 +17,10 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const [claims, setClaims] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [bounds, setBounds] = useState(null);
-  const [range, setRange] = useState({ from: "", to: "" });
+  // Claim Approvals has no date filter UI (see below) and must never
+  // silently hide an older pending approval, so only the plain claims list
+  // defaults to "this month" - approvalsOnly keeps the unbounded default.
+  const [range, setRange] = useState(approvalsOnly ? { from: "", to: "" } : defaultMonthRange);
   const [projectId, setProjectId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [claimStatus, setClaimStatus] = useState("");

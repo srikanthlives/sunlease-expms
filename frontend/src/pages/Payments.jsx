@@ -3,7 +3,7 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
-import DateRangePicker from "../components/DateRangePicker";
+import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff, Columns3 } from "lucide-react";
@@ -65,7 +65,7 @@ export default function Payments() {
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [bounds, setBounds] = useState(null);
-  const [range, setRange] = useState({ from: "", to: "" });
+  const [range, setRange] = useState(defaultMonthRange);
   const [accountId, setAccountId] = useState("");
   const [paymentMode, setPaymentMode] = useState("");
   const [statusFilter, setStatusFilter] = useState("");

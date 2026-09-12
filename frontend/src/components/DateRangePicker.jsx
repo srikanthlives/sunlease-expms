@@ -1,4 +1,5 @@
-import { Input } from "./ui";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Input, IconButton } from "./ui";
 
 function isoDaysAgo(days) {
   const d = new Date();
@@ -16,6 +17,31 @@ function isoToday() {
 function startOfYear(yearsAgo = 0) {
   const d = new Date();
   return `${d.getFullYear() - yearsAgo}-01-01`;
+}
+
+// Default range for list screens (Expenses/Payments/Invoices/Claims) -
+// matches the "This Month" preset below, so the page loads already showing
+// the current month's activity instead of everything ever recorded.
+export function defaultMonthRange() {
+  const today = isoToday();
+  return { from: today.slice(0, 8) + "01", to: today };
+}
+
+// Normalizes to the 1st of the month `delta` months away from `fromStr`
+// (defaulting to today when the range is unbounded, e.g. Claim Approvals).
+function stepMonth(fromStr, delta) {
+  const d = new Date(fromStr || isoToday());
+  d.setDate(1);
+  d.setMonth(d.getMonth() + delta);
+  return d;
+}
+// The full {from, to} for the month a Date falls in, clamped so `to` never
+// runs past today (there's nothing to show beyond "now").
+function monthRange(d) {
+  const today = isoToday();
+  const from = d.toISOString().slice(0, 10);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+  return { from, to: end > today ? today : end };
 }
 
 export function buildPresets(bounds) {
@@ -39,12 +65,25 @@ export default function DateRangePicker({ value, onChange, bounds }) {
   const presets = buildPresets(bounds);
   const activePreset = presets.find((p) => p.from === value.from && p.to === value.to);
 
+  // Next is disabled once stepping forward would start a month beyond
+  // today - there's nothing to show there yet.
+  const nextMonthStart = stepMonth(value.from, 1);
+  const nextDisabled = nextMonthStart.toISOString().slice(0, 10) > isoToday();
+
   return (
     <div className="flex flex-wrap items-end gap-3">
+      <IconButton
+        icon={ChevronLeft} title="Previous Month" bordered
+        onClick={() => onChange(monthRange(stepMonth(value.from, -1)))}
+      />
       <div className="flex gap-2">
         <Input label="From" type="date" value={value.from} onChange={(e) => onChange({ ...value, from: e.target.value })} className="w-40" />
         <Input label="To" type="date" value={value.to} onChange={(e) => onChange({ ...value, to: e.target.value })} className="w-40" />
       </div>
+      <IconButton
+        icon={ChevronRight} title="Next Month" bordered disabled={nextDisabled}
+        onClick={() => onChange(monthRange(nextMonthStart))}
+      />
       <div className="flex flex-wrap gap-1.5 pb-0.5">
         {presets.map((p) => (
           <button

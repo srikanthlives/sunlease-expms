@@ -3,7 +3,7 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
-import DateRangePicker from "../components/DateRangePicker";
+import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
@@ -76,7 +76,7 @@ export default function Expenses() {
   const [showForm, setShowForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [bounds, setBounds] = useState(null);
-  const [range, setRange] = useState({ from: "", to: "" });
+  const [range, setRange] = useState(defaultMonthRange);
   const [sourceType, setSourceType] = useState("");
   const [projectId, setProjectId] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -215,23 +215,25 @@ export default function Expenses() {
       <Card>
         <div className="flex flex-wrap items-end gap-4">
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
-          <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+        </div>
+        <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
+          <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)} className="w-44">
             <option value="">All Sources</option>
             {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
           </Select>
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
             <option value="">All Projects</option>
             {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
             <option value="">All Heads</option>
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
-          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
             <option value="">All Sub-Heads</option>
             {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
-          <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+          <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="w-44">
             <option value="">All Payment Statuses</option>
             {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
           </Select>

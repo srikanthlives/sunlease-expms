@@ -3,7 +3,7 @@ import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
-import DateRangePicker from "../components/DateRangePicker";
+import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
@@ -18,7 +18,7 @@ export default function Invoices() {
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [bounds, setBounds] = useState(null);
-  const [range, setRange] = useState({ from: "", to: "" });
+  const [range, setRange] = useState(defaultMonthRange);
   const [projectId, setProjectId] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [categoryId, setCategoryId] = useState("");

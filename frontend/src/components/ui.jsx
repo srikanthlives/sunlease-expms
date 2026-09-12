@@ -66,17 +66,24 @@ export function Button({ children, variant = "primary", className = "", ...props
 // Compact icon-only action button for table rows (edit/delete/verify etc.) -
 // title doubles as the tooltip and the accessible name since there's no
 // visible label.
-export function IconButton({ icon: Icon, title, tone = "default", size = 14, className = "", ...props }) {
+// `bordered` renders it as a bordered square button matching the height of
+// an adjacent Input/Select box (same px-3 py-2 box model) - used for things
+// like a Previous/Next Month stepper that sits next to a labeled date field
+// and needs to line up with the field's box, not just its own icon size.
+export function IconButton({ icon: Icon, title, tone = "default", size = 14, bordered = false, className = "", ...props }) {
   const tones = {
     default: "text-brand-700 hover:bg-brand-50",
     danger: "text-danger hover:bg-danger/10",
     ok: "text-ok hover:bg-ok/10",
     muted: "text-ink/50 hover:bg-ink/5",
   };
+  const base = bordered
+    ? "border border-ink/15 bg-white px-3 py-2 text-ink/70 hover:bg-ink/5"
+    : `p-1.5 ${tones[tone]}`;
   return (
     <button
       type="button" title={title} aria-label={title}
-      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${tones[tone]} ${className}`}
+      className={`inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${base} ${className}`}
       {...props}
     >
       <Icon size={size} />
