@@ -6,8 +6,23 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.config import settings
 from app.models.enums import AuditAction
+from app.models.models import Document
 from app.services import audit_service
 from app.services.storage import get_storage
+
+
+def delete_documents(db, docs: list[Document]):
+    """Removes each Document's underlying stored file (best-effort - a
+    missing/already-gone file doesn't block the row from being cleaned up,
+    see StorageBackend.delete_file) and its DB row. Callers whose entity
+    delete hard-deletes an Expense/Invoice/Payment must go through this
+    (not a bulk `.delete()` query, which never loads the rows and so never
+    even learns each doc's stored_filename) or the underlying files are
+    silently orphaned in storage forever."""
+    storage = get_storage()
+    for doc in docs:
+        storage.delete_file(doc.stored_filename)
+        db.delete(doc)
 
 
 def _safe_extension(filename: str) -> str:

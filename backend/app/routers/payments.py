@@ -129,6 +129,23 @@ def unverify_payment(payment_id: int, db: Session = Depends(get_db), user: User 
     return _to_out(p)
 
 
+@router.delete("/{payment_id}", dependencies=[Depends(require_accounts)])
+def delete_payment(payment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Hard delete - only while unverified. Reverses the payment's
+    allocations first, so the affected expense(s) fall back to UNPAID/
+    PARTIALLY_PAID (see payment_service.delete_payment)."""
+    p = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not p:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
+    if user.role.name == RoleName.ACCOUNTS:
+        project_scope_service.assert_payment_in_scope(db, user, p)
+        if edit_request_service.is_locked_for_accounts("PAYMENT", p):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This payment has been verified by Admin and can no longer be deleted")
+    payment_service.delete_payment(db, p, user.id)
+    db.commit()
+    return {"detail": "Payment deleted"}
+
+
 @router.post("/{payment_id}/cancel", response_model=PaymentOut, dependencies=[Depends(require_accounts)])
 def cancel_payment(payment_id: int, payload: CancelRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     p = db.query(Payment).filter(Payment.id == payment_id).first()

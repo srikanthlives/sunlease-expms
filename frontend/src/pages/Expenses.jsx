@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Pencil, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
+import { Plus, X, Pencil, Trash2, ShieldCheck, ShieldOff, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
 
 const SOURCE_TYPES = ["DIRECT_EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
@@ -96,6 +96,16 @@ export default function Expenses() {
   async function toggleVerify(r) {
     await client.post(`/expenses/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
     load();
+  }
+
+  async function deleteExpense(r) {
+    if (!window.confirm(`Delete ${r.expense_number}? This cannot be undone.`)) return;
+    try {
+      await client.delete(`/expenses/${r.id}`);
+      load();
+    } catch (err) {
+      alert(apiErrorMessage(err));
+    }
   }
 
   // Exports exactly what's on screen: the active filters plus whatever
@@ -321,26 +331,32 @@ export default function Expenses() {
                   <Attachments documentType="EXPENSE" expenseId={r.id} compact label="Attach" />
                 ),
             },
-            ...(canEdit ? [{
-              key: "__edit", header: "",
-              render: (r) => r.status === "ACTIVE" && r.source_type === "DIRECT_EXPENSE" && (
-                <button type="button" onClick={() => setEditingExpense(r)} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
-                  <Pencil size={12} /> Edit
-                </button>
-              ),
+            ...(canEdit || isAdmin ? [{
+              key: "__actions", header: "",
+              render: (r) => {
+                const canDelete = r.status === "ACTIVE" && r.source_type === "DIRECT_EXPENSE"
+                  && Number(r.paid_amount) === 0 && (isAdmin || !r.is_verified);
+                return (
+                  <div className="flex items-center gap-0.5 whitespace-nowrap">
+                    {canEdit && r.status === "ACTIVE" && r.source_type === "DIRECT_EXPENSE" && (
+                      <IconButton icon={Pencil} title="Edit" onClick={() => setEditingExpense(r)} />
+                    )}
+                    {canDelete && (
+                      <IconButton icon={Trash2} title="Delete" tone="danger" onClick={() => deleteExpense(r)} />
+                    )}
+                    {isAdmin && r.status === "ACTIVE" && (
+                      <IconButton
+                        icon={r.is_verified ? ShieldOff : ShieldCheck}
+                        title={r.is_verified ? "Unverify" : "Verify"}
+                        tone={r.is_verified ? "muted" : "ok"}
+                        onClick={() => toggleVerify(r)}
+                      />
+                    )}
+                  </div>
+                );
+              },
             }] : []),
-            ...(isAdmin ? [{
-              key: "__verify", header: "",
-              render: (r) => r.status === "ACTIVE" && (
-                <button
-                  type="button" onClick={() => toggleVerify(r)}
-                  className={`text-xs inline-flex items-center gap-1 hover:underline whitespace-nowrap ${r.is_verified ? "text-ink/50" : "text-ok"}`}
-                >
-                  {r.is_verified ? "Unverify" : "Verify"}
-                </button>
-              ),
-            }] : []),
-          ].filter((c) => ["expense_number", "expense_date", "__edit", "__verify"].includes(c.key) || !hiddenCols.has(c.key))}
+          ].filter((c) => ["expense_number", "expense_date", "__actions"].includes(c.key) || !hiddenCols.has(c.key))}
           rows={expenses}
           footer={summary && {
             expense_number: `${summary.count} expense(s)`,

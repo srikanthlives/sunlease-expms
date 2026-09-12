@@ -123,6 +123,24 @@ def unverify_invoice(invoice_id: int, db: Session = Depends(get_db), user: User 
     return _to_out(inv)
 
 
+@router.delete("/{invoice_id}", dependencies=[Depends(require_accounts)])
+def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Hard delete - only while unverified. Deletes the invoice and its
+    linked Expense together (see invoice_service.delete_invoice). If a
+    payment has been recorded against it, 400s asking to delete the payment
+    first - see DELETE /payments/{id}."""
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if user.role.name == RoleName.ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, inv.project_id)
+        if edit_request_service.is_locked_for_accounts("INVOICE", inv):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This invoice has been verified by Admin and can no longer be deleted")
+    invoice_service.delete_invoice(db, inv, user.id)
+    db.commit()
+    return {"detail": "Invoice deleted"}
+
+
 @router.post("/{invoice_id}/cancel", response_model=InvoiceOut, dependencies=[Depends(require_accounts)])
 def cancel_invoice(invoice_id: int, payload: CancelRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()

@@ -63,6 +63,27 @@ export function Button({ children, variant = "primary", className = "", ...props
   );
 }
 
+// Compact icon-only action button for table rows (edit/delete/verify etc.) -
+// title doubles as the tooltip and the accessible name since there's no
+// visible label.
+export function IconButton({ icon: Icon, title, tone = "default", size = 14, className = "", ...props }) {
+  const tones = {
+    default: "text-brand-700 hover:bg-brand-50",
+    danger: "text-danger hover:bg-danger/10",
+    ok: "text-ok hover:bg-ok/10",
+    muted: "text-ink/50 hover:bg-ink/5",
+  };
+  return (
+    <button
+      type="button" title={title} aria-label={title}
+      className={`inline-flex items-center justify-center rounded-md p-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${tones[tone]} ${className}`}
+      {...props}
+    >
+      <Icon size={size} />
+    </button>
+  );
+}
+
 export function Input({ label, error, className = "", ...props }) {
   return (
     <label className="block">

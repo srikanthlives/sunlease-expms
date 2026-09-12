@@ -3,9 +3,9 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import Payment, PaymentAllocation, Expense
+from app.models.models import Payment, PaymentAllocation, Expense, Document
 from app.models.enums import AuditAction
-from app.services import numbering, audit_service
+from app.services import numbering, audit_service, document_service
 from app.services.payment_status_service import get_paid_amount, recalculate_payment_status
 
 
@@ -99,3 +99,26 @@ def cancel_payment(db: Session, payment: Payment, actor_id: int, reason: str | N
 
     audit_service.record(db, "PAYMENT", payment.id, AuditAction.CANCEL, actor_id, {"reason": reason})
     return payment
+
+
+def delete_payment(db: Session, payment: Payment, actor_id: int):
+    """Hard delete - only ever reachable (see routers/payments.py) while the
+    payment is unverified. Reverses its effect exactly like cancel_payment
+    (each affected expense's payment_status is recalculated back to UNPAID/
+    PARTIALLY_PAID) but removes the row entirely instead of marking it
+    cancelled, since nothing has been frozen by verification yet."""
+    affected_expense_ids = [a.expense_id for a in payment.allocations]
+
+    audit_service.record(
+        db, "PAYMENT", payment.id, AuditAction.DELETE, actor_id,
+        {"payment_number": payment.payment_number, "amount": str(payment.amount), "expense_ids": affected_expense_ids},
+    )
+    docs = db.query(Document).filter(Document.payment_id == payment.id).all()
+    document_service.delete_documents(db, docs)
+    db.delete(payment)  # cascades to PaymentAllocation rows (Payment.allocations is cascade="all, delete-orphan")
+    db.flush()
+
+    for expense_id in affected_expense_ids:
+        expense = db.query(Expense).filter(Expense.id == expense_id).first()
+        if expense:
+            recalculate_payment_status(db, expense)

@@ -3,9 +3,9 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import Invoice
+from app.models.models import Invoice, Document
 from app.models.enums import SourceType, AuditAction
-from app.services import expense_service, audit_service
+from app.services import expense_service, audit_service, document_service
 
 
 def create_invoice(
@@ -58,3 +58,30 @@ def cancel_invoice(db: Session, invoice: Invoice, actor_id: int, reason: str | N
     expense_service.cancel_expense(db, invoice.expense, actor_id, reason)
     audit_service.record(db, "INVOICE", invoice.id, AuditAction.CANCEL, actor_id, {"reason": reason})
     return invoice
+
+
+def delete_invoice(db: Session, invoice: Invoice, actor_id: int):
+    """Hard delete - only ever reachable (see routers/invoices.py) while
+    unverified. Deletes the invoice AND its linked Expense together (they
+    are 1:1 - see Invoice.expense_id) rather than leaving an orphaned
+    expense behind. If a payment has been recorded against it, the caller
+    must delete that payment first (see payment_service.delete_payment),
+    which is what turns the expense back to UNPAID and makes this possible."""
+    if expense_service.has_payment_allocations(db, invoice.expense_id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This invoice has a payment recorded against it - delete the payment first, then come back to delete this invoice",
+        )
+    audit_service.record(
+        db, "INVOICE", invoice.id, AuditAction.DELETE, actor_id,
+        {"invoice_number": invoice.invoice_number, "total_amount": str(invoice.total_amount)},
+    )
+    expense = invoice.expense
+    invoice_docs = db.query(Document).filter(Document.invoice_id == invoice.id).all()
+    document_service.delete_documents(db, invoice_docs)
+    db.delete(invoice)
+    db.flush()
+    if expense:
+        expense_docs = db.query(Document).filter(Document.expense_id == expense.id).all()
+        document_service.delete_documents(db, expense_docs)
+        db.delete(expense)

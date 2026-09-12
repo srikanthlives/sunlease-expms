@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, Button, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import DateRangePicker from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
-import { Plus, X, Trash2, Pencil } from "lucide-react";
+import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff } from "lucide-react";
 
 const PAYMENT_MODES = ["NEFT", "RTGS", "IMPS", "UPI", "CASH", "CHEQUE"];
 
@@ -31,6 +31,16 @@ export default function Payments() {
   async function toggleVerify(r) {
     await client.post(`/payments/${r.id}/${r.is_verified ? "unverify" : "verify"}`);
     load();
+  }
+
+  async function deletePayment(r) {
+    if (!window.confirm(`Delete ${r.payment_number}? The expense(s) it was allocated to will fall back to unpaid / partially paid. This cannot be undone.`)) return;
+    try {
+      await client.delete(`/payments/${r.id}`);
+      load();
+    } catch (err) {
+      alert(apiErrorMessage(err));
+    }
   }
 
   useEffect(() => {
@@ -139,24 +149,26 @@ export default function Payments() {
               key: "attachments", header: "Receipt",
               render: (r) => <Attachments documentType="PAYMENT" paymentId={r.id} compact label="Receipt" />,
             },
-            ...(canEdit ? [{
-              key: "__edit", header: "",
-              render: (r) => !r.is_cancelled && (
-                <button type="button" onClick={() => setEditingPayment(r)} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
-                  <Pencil size={12} /> Edit
-                </button>
-              ),
-            }] : []),
-            ...(isAdmin ? [{
-              key: "__verify", header: "",
-              render: (r) => !r.is_cancelled && (
-                <button
-                  type="button" onClick={() => toggleVerify(r)}
-                  className={`text-xs inline-flex items-center gap-1 hover:underline whitespace-nowrap ${r.is_verified ? "text-ink/50" : "text-ok"}`}
-                >
-                  {r.is_verified ? "Unverify" : "Verify"}
-                </button>
-              ),
+            ...(canEdit || isAdmin ? [{
+              key: "__actions", header: "",
+              render: (r) => {
+                if (r.is_cancelled) return null;
+                const canDelete = isAdmin || !r.is_verified;
+                return (
+                  <div className="flex items-center gap-0.5 whitespace-nowrap">
+                    {canEdit && <IconButton icon={Pencil} title="Edit" onClick={() => setEditingPayment(r)} />}
+                    {canDelete && <IconButton icon={Trash2} title="Delete" tone="danger" onClick={() => deletePayment(r)} />}
+                    {isAdmin && (
+                      <IconButton
+                        icon={r.is_verified ? ShieldOff : ShieldCheck}
+                        title={r.is_verified ? "Unverify" : "Verify"}
+                        tone={r.is_verified ? "muted" : "ok"}
+                        onClick={() => toggleVerify(r)}
+                      />
+                    )}
+                  </div>
+                );
+              },
             }] : []),
           ]}
           rows={payments}

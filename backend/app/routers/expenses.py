@@ -339,6 +339,24 @@ def unverify_expense(expense_id: int, db: Session = Depends(get_db), user: User 
     return _to_out(db, e)
 
 
+@router.delete("/{expense_id}", dependencies=[Depends(require_accounts)])
+def delete_expense(expense_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Hard delete - only for an unverified DIRECT_EXPENSE with no payment
+    allocated to it (both enforced in expense_service.delete_expense).
+    Admin/Super Admin may delete regardless of verification; Accounts is
+    locked out once Admin verifies it, same as the edit rules."""
+    e = db.query(Expense).filter(Expense.id == expense_id).first()
+    if not e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
+    if user.role.name == RoleName.ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, e.project_id)
+        if edit_request_service.is_locked_for_accounts("EXPENSE", e):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This expense has been verified by Admin and can no longer be deleted")
+    expense_service.delete_expense(db, e, user.id)
+    db.commit()
+    return {"detail": "Expense deleted"}
+
+
 @router.post("/{expense_id}/cancel", response_model=ExpenseOut, dependencies=[Depends(require_accounts)])
 def cancel_expense(expense_id: int, payload: CancelRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     e = db.query(Expense).filter(Expense.id == expense_id).first()

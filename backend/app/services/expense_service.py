@@ -3,10 +3,14 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.models import Expense, Payment, PaymentAllocation
+from app.models.models import Expense, Payment, PaymentAllocation, Document
 from app.models.enums import SourceType, AuditAction
-from app.services import numbering, audit_service
+from app.services import numbering, audit_service, document_service
 from app.services.payment_status_service import recalculate_payment_status
+
+
+def has_payment_allocations(db: Session, expense_id: int) -> bool:
+    return db.query(PaymentAllocation).filter(PaymentAllocation.expense_id == expense_id).first() is not None
 
 
 def create_expense_record(
@@ -76,10 +80,37 @@ def pay_expense_immediately(
 
 
 def cancel_expense(db: Session, expense: Expense, actor_id: int, reason: str | None = None):
-    """Financial records are never hard-deleted - cancel with an audit trail instead."""
+    """Financial records are normally never hard-deleted - cancel with an
+    audit trail instead. See delete_expense() below for the one deliberate
+    exception (unverified direct expenses with no payments)."""
     if expense.payment_status != "UNPAID":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot cancel an expense that has payments allocated to it")
     expense.status = "CANCELLED"
     db.add(expense)
     audit_service.record(db, "EXPENSE", expense.id, AuditAction.CANCEL, actor_id, {"reason": reason})
     return expense
+
+
+def delete_expense(db: Session, expense: Expense, actor_id: int):
+    """Hard delete - only ever reachable (see routers/expenses.py) for an
+    unverified DIRECT_EXPENSE with no payment allocated to it. Once verified
+    or once money has moved against it, the record is frozen and must go
+    through cancel_expense (or, for a paid expense, the payment must be
+    deleted first - see payment_service.delete_payment) instead."""
+    if expense.source_type != SourceType.DIRECT_EXPENSE:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Only direct expenses can be deleted here - an invoice-linked expense is deleted from the Invoices page",
+        )
+    if has_payment_allocations(db, expense.id):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This expense has a payment allocated to it - delete the payment first, then come back to delete this expense",
+        )
+    audit_service.record(
+        db, "EXPENSE", expense.id, AuditAction.DELETE, actor_id,
+        {"expense_number": expense.expense_number, "total_amount": str(expense.total_amount)},
+    )
+    docs = db.query(Document).filter(Document.expense_id == expense.id).all()
+    document_service.delete_documents(db, docs)
+    db.delete(expense)
