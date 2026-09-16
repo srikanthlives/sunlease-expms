@@ -1,18 +1,38 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Input, IconButton } from "./ui";
 
+// Formats a Date's LOCAL year/month/day as "YYYY-MM-DD". Never use
+// `Date#toISOString()` for this - it renders the UTC instant, and mixing
+// that with local getters/setters (as this file used to) silently shifts
+// the date by a day depending on the browser's timezone offset, and by
+// extension shifts "last day of month" results in a way that varies
+// month-to-month (the 31st becoming the 30th or 29th, seemingly at random).
+function formatLocalISO(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+// Parses a "YYYY-MM-DD" string as a local-time Date at midnight - avoids
+// the built-in `new Date("YYYY-MM-DD")` parse, which treats date-only
+// strings as UTC and reintroduces the same timezone drift.
+function parseISODate(s) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 function isoDaysAgo(days) {
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return formatLocalISO(d);
 }
 function isoMonthsAgo(months) {
   const d = new Date();
   d.setMonth(d.getMonth() - months);
-  return d.toISOString().slice(0, 10);
+  return formatLocalISO(d);
 }
 function isoToday() {
-  return new Date().toISOString().slice(0, 10);
+  return formatLocalISO(new Date());
 }
 function startOfYear(yearsAgo = 0) {
   const d = new Date();
@@ -30,7 +50,7 @@ export function defaultMonthRange() {
 // Normalizes to the 1st of the month `delta` months away from `fromStr`
 // (defaulting to today when the range is unbounded, e.g. Claim Approvals).
 function stepMonth(fromStr, delta) {
-  const d = new Date(fromStr || isoToday());
+  const d = fromStr ? parseISODate(fromStr) : new Date();
   d.setDate(1);
   d.setMonth(d.getMonth() + delta);
   return d;
@@ -39,8 +59,8 @@ function stepMonth(fromStr, delta) {
 // runs past today (there's nothing to show beyond "now").
 function monthRange(d) {
   const today = isoToday();
-  const from = d.toISOString().slice(0, 10);
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+  const from = formatLocalISO(d);
+  const end = formatLocalISO(new Date(d.getFullYear(), d.getMonth() + 1, 0));
   return { from, to: end > today ? today : end };
 }
 
@@ -68,7 +88,7 @@ export default function DateRangePicker({ value, onChange, bounds }) {
   // Next is disabled once stepping forward would start a month beyond
   // today - there's nothing to show there yet.
   const nextMonthStart = stepMonth(value.from, 1);
-  const nextDisabled = nextMonthStart.toISOString().slice(0, 10) > isoToday();
+  const nextDisabled = formatLocalISO(nextMonthStart) > isoToday();
 
   return (
     <div className="flex flex-wrap items-end gap-3">
