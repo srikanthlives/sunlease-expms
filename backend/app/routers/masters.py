@@ -237,7 +237,7 @@ def list_vendors(db: Session = Depends(get_db), user: User = Depends(get_current
         else:
             q = q.filter(~has_links)
 
-    return q.order_by(Vendor.vendor_name).distinct().all()
+    return q.order_by(Vendor.vendor_code).distinct().all()
 
 
 @router.put("/vendors/{vendor_id}", response_model=VendorOut, dependencies=[Depends(require_admin)])
