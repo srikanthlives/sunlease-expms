@@ -1,7 +1,11 @@
+import os
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.deps import get_current_user, require_admin
 from app.db.session import get_db
 from app.models.enums import RoleName
@@ -13,7 +17,8 @@ from app.schemas.masters import (
     ProjectCreate, ProjectOut, AssignApproverRequest, AssignAccountsUsersRequest, EmployeeCreate, EmployeeOut, EmployeeDetailOut, VendorCreate, VendorOut,
     CategoryCreate, CategoryOut, SubCategoryCreate, SubCategoryOut, AccountCreate, AccountOut,
 )
-from app.services import project_scope_service
+from app.services import project_scope_service, document_service
+from app.services.storage import get_storage
 
 router = APIRouter(prefix="/api/v1", tags=["masters"])
 
@@ -252,6 +257,54 @@ def update_vendor(vendor_id: int, payload: VendorCreate, db: Session = Depends(g
     db.commit()
     db.refresh(vendor)
     return vendor
+
+
+_QR_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+@router.post("/vendors/{vendor_id}/qr-image", response_model=VendorOut, dependencies=[Depends(require_admin)])
+async def upload_vendor_qr_image(vendor_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+    if not vendor:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Vendor not found")
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in _QR_IMAGE_EXTENSIONS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "QR code must be an image (jpg, jpeg, png, webp)")
+
+    old_stored_filename = vendor.qr_image_stored_filename
+    meta = await document_service.save_upload(
+        db, file, uploaded_by=user.id, category="vendor_qr", subdir_override=f"vendors/{vendor.vendor_code}",
+    )
+    vendor.qr_image_path = meta["file_path"]
+    vendor.qr_image_stored_filename = meta["stored_filename"]
+    vendor.qr_image_mime = meta["mime_type"]
+    vendor.qr_image_original_name = meta["original_filename"]
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+
+    if old_stored_filename:
+        get_storage().delete_file(old_stored_filename)
+
+    return vendor
+
+
+@router.get("/vendors/{vendor_id}/qr-image")
+async def download_vendor_qr_image(vendor_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    vendor = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+    if not vendor or not vendor.qr_image_stored_filename:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No QR code on file for this vendor")
+
+    if settings.STORAGE_TYPE == "local":
+        if not vendor.qr_image_path or not os.path.exists(vendor.qr_image_path):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "File missing on server")
+        return FileResponse(vendor.qr_image_path, media_type=vendor.qr_image_mime, filename=vendor.qr_image_original_name)
+    else:
+        file_content = await get_storage().retrieve_file(vendor.qr_image_stored_filename)
+        return StreamingResponse(
+            iter([file_content]), media_type=vendor.qr_image_mime,
+            headers={"Content-Disposition": f'attachment; filename="{vendor.qr_image_original_name}"'},
+        )
 
 
 # Categories

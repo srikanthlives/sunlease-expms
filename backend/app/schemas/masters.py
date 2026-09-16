@@ -68,17 +68,20 @@ class VendorBase(BaseModel):
     vendor_code: str
     vendor_name: str
     location: str | None = None
+    pincode: str | None = None
     gstin: str | None = None
     contact_person: str | None = None
     phone: str | None = None
     email: str | None = None
     address: str | None = None
+    products_services: str | None = None
 
 
 class VendorCreate(VendorBase):
     bank_name: str | None = None
     account_number: str | None = None
     ifsc: str | None = None
+    is_active: bool = True
     # Which projects this vendor belongs to. Empty = general/universal
     # vendor, visible regardless of project.
     project_ids: list[int] = []
@@ -86,6 +89,10 @@ class VendorCreate(VendorBase):
 
 class VendorOut(VendorBase):
     id: int
+    bank_name: str | None = None
+    account_number: str | None = None
+    ifsc: str | None = None
+    has_qr_image: bool = False
     is_active: bool
     project_ids: list[int] = []
 

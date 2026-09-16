@@ -179,6 +179,12 @@ class Vendor(Base):
     bank_name = Column(String(255))
     account_number = Column(String(100))
     ifsc = Column(String(20))
+    pincode = Column(String(12))
+    products_services = Column(Text)
+    qr_image_path = Column(String(500))
+    qr_image_stored_filename = Column(String(500))
+    qr_image_mime = Column(String(100))
+    qr_image_original_name = Column(String(255))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -188,6 +194,10 @@ class Vendor(Base):
     @property
     def project_ids(self):
         return [link.project_id for link in self.project_links]
+
+    @property
+    def has_qr_image(self):
+        return bool(self.qr_image_path)
 
 
 class VendorProject(Base):

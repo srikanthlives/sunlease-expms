@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import or_
+
 from app.core.deps import get_current_user, require_accounts, require_admin
 from app.db.session import get_db
 from app.models.enums import RecurringAmountType, RecurringInstanceStatus, RecurringPayeeType, RoleName
-from app.models.models import RecurringExpense, RecurringExpenseInstance, User
+from app.models.models import Project, RecurringExpense, RecurringExpenseInstance, User
 from app.schemas.recurring_expenses import (
     InstanceRejectRequest, InstanceReviewRequest, RecurringExpenseCreate, RecurringExpenseInstanceOut, RecurringExpenseOut,
 )
@@ -15,6 +17,26 @@ router = APIRouter(prefix="/api/v1/recurring-expenses", tags=["recurring-expense
 
 def _reviewer_name(u: User | None) -> str | None:
     return (u.full_name or u.username) if u else None
+
+
+def _restrict_to_accounts_projects(q, user: User, project_id_column):
+    """Accounts users only see recurring expenses for projects they're the
+    assigned approver of (Project.accounts_approver_id), plus the fallback
+    pool of projects with no approver assigned - same rule as claim
+    approval routing. Admin/Super Admin keep full visibility."""
+    if user.role.name == RoleName.ACCOUNTS:
+        q = q.join(Project, project_id_column == Project.id).filter(
+            or_(Project.accounts_approver_id == user.id, Project.accounts_approver_id.is_(None))
+        )
+    return q
+
+
+def _authorize_template_access(tpl: RecurringExpense, user: User):
+    if user.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
+        return
+    project = tpl.project
+    if project and project.accounts_approver_id and project.accounts_approver_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not the assigned approver for this project")
 
 
 def _instance_to_out(i: RecurringExpenseInstance) -> RecurringExpenseInstanceOut:
@@ -57,28 +79,22 @@ def create_recurring_expense(payload: RecurringExpenseCreate, db: Session = Depe
 
 
 @router.get("", response_model=list[RecurringExpenseOut], dependencies=[Depends(require_accounts)])
-def list_recurring_expenses(db: Session = Depends(get_db), is_active: bool | None = None):
+def list_recurring_expenses(db: Session = Depends(get_db), user: User = Depends(get_current_user), is_active: bool | None = None):
     recurring_expense_service.generate_due_instances(db)
     db.commit()
     q = db.query(RecurringExpense)
+    q = _restrict_to_accounts_projects(q, user, RecurringExpense.project_id)
     if is_active is not None:
         q = q.filter(RecurringExpense.is_active == is_active)
     return q.order_by(RecurringExpense.name).all()
 
 
-@router.get("/{template_id}", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
-def get_recurring_expense(template_id: int, db: Session = Depends(get_db)):
-    tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
-    if not tpl:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
-    return tpl
-
-
 @router.put("/{template_id}", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
-def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, db: Session = Depends(get_db)):
+def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
     if not tpl:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    _authorize_template_access(tpl, user)
     if payload.frequency not in ("WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUALLY"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid frequency")
     if payload.amount_type not in RecurringAmountType.ALL:
@@ -94,10 +110,11 @@ def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, 
 
 
 @router.post("/{template_id}/deactivate", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
-def deactivate_recurring_expense(template_id: int, db: Session = Depends(get_db)):
+def deactivate_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
     if not tpl:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    _authorize_template_access(tpl, user)
     tpl.is_active = False
     db.add(tpl)
     db.commit()
@@ -106,10 +123,11 @@ def deactivate_recurring_expense(template_id: int, db: Session = Depends(get_db)
 
 
 @router.post("/{template_id}/activate", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
-def activate_recurring_expense(template_id: int, db: Session = Depends(get_db)):
+def activate_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
     if not tpl:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    _authorize_template_access(tpl, user)
     tpl.is_active = True
     db.add(tpl)
     db.commit()
@@ -125,7 +143,8 @@ def activate_recurring_expense(template_id: int, db: Session = Depends(get_db)):
 def list_pending_instances(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     recurring_expense_service.generate_due_instances(db)
     db.commit()
-    q = db.query(RecurringExpenseInstance)
+    q = db.query(RecurringExpenseInstance).join(RecurringExpense)
+    q = _restrict_to_accounts_projects(q, user, RecurringExpense.project_id)
     if user.role.name == RoleName.ACCOUNTS:
         q = q.filter(RecurringExpenseInstance.status == RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW)
     else:
@@ -137,10 +156,11 @@ def list_pending_instances(db: Session = Depends(get_db), user: User = Depends(g
 
 
 @router.get("/instances", response_model=list[RecurringExpenseInstanceOut], dependencies=[Depends(require_accounts)])
-def list_instances(db: Session = Depends(get_db), recurring_expense_id: int | None = None, status_: str | None = None):
+def list_instances(db: Session = Depends(get_db), user: User = Depends(get_current_user), recurring_expense_id: int | None = None, status_: str | None = None):
     recurring_expense_service.generate_due_instances(db)
     db.commit()
-    q = db.query(RecurringExpenseInstance)
+    q = db.query(RecurringExpenseInstance).join(RecurringExpense)
+    q = _restrict_to_accounts_projects(q, user, RecurringExpense.project_id)
     if recurring_expense_id:
         q = q.filter(RecurringExpenseInstance.recurring_expense_id == recurring_expense_id)
     if status_:
@@ -154,6 +174,7 @@ def review_instance(instance_id: int, payload: InstanceReviewRequest, db: Sessio
     instance = db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.id == instance_id).first()
     if not instance:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
+    _authorize_template_access(instance.recurring_expense, user)
     recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.bill_number, payload.description, payload.remarks)
     db.commit()
     db.refresh(instance)
@@ -176,7 +197,20 @@ def reject_instance(instance_id: int, payload: InstanceRejectRequest, db: Sessio
     instance = db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.id == instance_id).first()
     if not instance:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
+    _authorize_template_access(instance.recurring_expense, user)
     recurring_expense_service.reject(db, instance, user, payload.reason)
     db.commit()
     db.refresh(instance)
     return _instance_to_out(instance)
+
+
+# NOTE: this must stay below the more specific "/instances*" routes above -
+# FastAPI matches path operations in declaration order, and "/{template_id}"
+# would otherwise swallow "/instances" as if "instances" were an id.
+@router.get("/{template_id}", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
+def get_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    _authorize_template_access(tpl, user)
+    return tpl

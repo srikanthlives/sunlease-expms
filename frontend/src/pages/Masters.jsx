@@ -244,11 +244,24 @@ export function VendorsMaster() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const emptyForm = {
-    vendor_code: "", vendor_name: "", location: "", gstin: "", phone: "", email: "", project_ids: [],
+    vendor_code: "", vendor_name: "", contact_person: "", phone: "",
+    bank_name: "", account_number: "", ifsc: "",
+    gstin: "", location: "", pincode: "", products_services: "",
+    is_active: true, project_ids: [],
   };
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [qrFile, setQrFile] = useState(null);
+  const [qrUploading, setQrUploading] = useState(false);
+  const [editingHasQr, setEditingHasQr] = useState(false);
+
+  function viewQrCode(vendorId) {
+    client.get(`/vendors/${vendorId}/qr-image`, { responseType: "blob" }).then((res) => {
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank");
+    });
+  }
 
   function load() {
     client.get("/vendors").then((res) => setVendors(res.data));
@@ -259,6 +272,8 @@ export function VendorsMaster() {
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm);
+    setQrFile(null);
+    setEditingHasQr(false);
     setError("");
     setShowForm(true);
   }
@@ -266,9 +281,13 @@ export function VendorsMaster() {
   function openEdit(v) {
     setEditingId(v.id);
     setForm({
-      vendor_code: v.vendor_code, vendor_name: v.vendor_name, location: v.location || "",
-      gstin: v.gstin || "", phone: v.phone || "", email: v.email || "", project_ids: v.project_ids || [],
+      vendor_code: v.vendor_code, vendor_name: v.vendor_name, contact_person: v.contact_person || "",
+      phone: v.phone || "", bank_name: v.bank_name || "", account_number: v.account_number || "", ifsc: v.ifsc || "",
+      gstin: v.gstin || "", location: v.location || "", pincode: v.pincode || "",
+      products_services: v.products_services || "", is_active: v.is_active, project_ids: v.project_ids || [],
     });
+    setQrFile(null);
+    setEditingHasQr(!!v.has_qr_image);
     setError("");
     setShowForm(true);
   }
@@ -278,19 +297,29 @@ export function VendorsMaster() {
     setBusy(true);
     setError("");
     try {
+      let vendorId = editingId;
       if (editingId != null) {
         await client.put(`/vendors/${editingId}`, form);
       } else {
-        await client.post("/vendors", form);
+        const res = await client.post("/vendors", form);
+        vendorId = res.data.id;
+      }
+      if (qrFile && vendorId != null) {
+        setQrUploading(true);
+        const body = new FormData();
+        body.append("file", qrFile);
+        await client.post(`/vendors/${vendorId}/qr-image`, body, { headers: { "Content-Type": "multipart/form-data" } });
       }
       setShowForm(false);
       setEditingId(null);
       setForm(emptyForm);
+      setQrFile(null);
       load();
     } catch (err) {
       setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
+      setQrUploading(false);
     }
   }
 
@@ -313,11 +342,36 @@ export function VendorsMaster() {
           <form onSubmit={submit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input label="Vendor Code" required value={form.vendor_code} onChange={(e) => setForm((s) => ({ ...s, vendor_code: e.target.value }))} />
-              <Input label="Vendor Name" required value={form.vendor_name} onChange={(e) => setForm((s) => ({ ...s, vendor_name: e.target.value }))} />
-              <Input label="Location" value={form.location} onChange={(e) => setForm((s) => ({ ...s, location: e.target.value }))} />
+              <Input label="Vendor/Company Name" required value={form.vendor_name} onChange={(e) => setForm((s) => ({ ...s, vendor_name: e.target.value }))} />
+              <Input label="Contact Person" value={form.contact_person} onChange={(e) => setForm((s) => ({ ...s, contact_person: e.target.value }))} />
+              <Input label="Contact Number" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} />
               <Input label="GSTIN" value={form.gstin} onChange={(e) => setForm((s) => ({ ...s, gstin: e.target.value }))} />
-              <Input label="Phone" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} />
-              <Input label="Email" type="email" value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} />
+              <Input label="Location" value={form.location} onChange={(e) => setForm((s) => ({ ...s, location: e.target.value }))} />
+              <Input label="Pincode" value={form.pincode} onChange={(e) => setForm((s) => ({ ...s, pincode: e.target.value }))} />
+              <Select label="Status" value={form.is_active ? "active" : "inactive"} onChange={(e) => setForm((s) => ({ ...s, is_active: e.target.value === "active" }))}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </div>
+            <div>
+              <Input label="Products / Services" value={form.products_services} onChange={(e) => setForm((s) => ({ ...s, products_services: e.target.value }))} />
+            </div>
+            <div>
+              <span className="block text-xs font-medium text-ink/60 mb-1.5">Payment Details</span>
+              <div className="grid grid-cols-3 gap-4">
+                <Input label="Bank Name" value={form.bank_name} onChange={(e) => setForm((s) => ({ ...s, bank_name: e.target.value }))} />
+                <Input label="Account Number" value={form.account_number} onChange={(e) => setForm((s) => ({ ...s, account_number: e.target.value }))} />
+                <Input label="IFSC" value={form.ifsc} onChange={(e) => setForm((s) => ({ ...s, ifsc: e.target.value }))} />
+              </div>
+              <div className="mt-2">
+                <span className="block text-xs font-medium text-ink/60 mb-1.5">Or QR Code (image)</span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setQrFile(e.target.files?.[0] || null)} className="text-sm" />
+                {editingHasQr && !qrFile && (
+                  <button type="button" onClick={() => viewQrCode(editingId)} className="ml-3 text-xs text-brand-700 hover:underline">
+                    View current QR code
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <span className="block text-xs font-medium text-ink/60 mb-1.5">Projects (leave empty to allow every project)</span>
@@ -340,7 +394,7 @@ export function VendorsMaster() {
               </div>
             </div>
             {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
-            <Button type="submit" disabled={busy}>{busy ? "Saving…" : editingId != null ? "Save Changes" : "Save"}</Button>
+            <Button type="submit" disabled={busy}>{busy ? (qrUploading ? "Uploading QR…" : "Saving…") : editingId != null ? "Save Changes" : "Save"}</Button>
           </form>
         </Card>
       )}
@@ -350,9 +404,14 @@ export function VendorsMaster() {
           columns={[
             { key: "vendor_code", header: "Code" },
             { key: "vendor_name", header: "Name", render: (row) => vendorLabel(row) },
+            { key: "contact_person", header: "Contact Person" },
+            { key: "phone", header: "Contact Number" },
             { key: "location", header: "Location" },
-            { key: "gstin", header: "GSTIN" }, { key: "phone", header: "Phone" },
+            { key: "pincode", header: "Pincode" },
+            { key: "gstin", header: "GSTIN" },
+            { key: "products_services", header: "Products/Services" },
             { key: "projects", header: "Projects", render: (r) => <span className="text-xs">{projectNames(r.project_ids)}</span> },
+            { key: "is_active", header: "Status", render: (r) => <span className={r.is_active ? "text-success" : "text-ink/40"}>{r.is_active ? "Active" : "Inactive"}</span> },
             {
               key: "__edit", header: "",
               render: (r) => (

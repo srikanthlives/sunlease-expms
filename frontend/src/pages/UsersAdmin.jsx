@@ -193,7 +193,7 @@ function UserForm({ roles, isSuperAdmin, onClose, onCreated }) {
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
       <h3 className="font-display font-semibold text-lg mb-4">New User</h3>
       <form onSubmit={submit} className="space-y-4">
-        <Input label="Username" required value={form.username} onChange={(e) => set("username", e.target.value)} autoFocus />
+        <Input label="Username" required value={form.username} onChange={(e) => set("username", e.target.value)} autoFocus uppercase={false} />
         <Input label="Full Name" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
         <Input label="Email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
         <Input label="Password" type="password" required minLength={8} value={form.password} onChange={(e) => set("password", e.target.value)} />
@@ -257,7 +257,7 @@ function EditUserModal({ user, roles, onClose, onSaved }) {
         <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
         <h3 className="font-display font-semibold text-lg mb-4">Edit User</h3>
         <form onSubmit={submit} className="space-y-4">
-          <Input label="Username" required value={form.username} onChange={(e) => set("username", e.target.value)} autoFocus />
+          <Input label="Username" required value={form.username} onChange={(e) => set("username", e.target.value)} autoFocus uppercase={false} />
           <Input label="Full Name" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} />
           <Input label="Email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
           {canSwitchRole && (

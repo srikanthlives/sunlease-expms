@@ -91,12 +91,27 @@ export function IconButton({ icon: Icon, title, tone = "default", size = 14, bor
   );
 }
 
-export function Input({ label, error, className = "", ...props }) {
+// Text-like input types get force-uppercased as the user types (master data
+// - names, codes, addresses, GSTIN etc. - is entered in caps throughout this
+// app). Types where case is meaningful or caps make no sense are left alone.
+const NON_UPPERCASE_TYPES = new Set(["password", "email", "number", "date", "datetime-local", "time", "file", "checkbox", "radio", "color", "range", "hidden"]);
+
+export function Input({ label, error, className = "", type, onChange, uppercase, ...props }) {
+  const shouldUppercase = uppercase !== undefined ? uppercase : !NON_UPPERCASE_TYPES.has(type);
+  function handleChange(e) {
+    if (shouldUppercase && onChange) {
+      const upper = e.target.value.toUpperCase();
+      if (upper !== e.target.value) e.target.value = upper;
+    }
+    onChange?.(e);
+  }
   return (
     <label className="block">
       {label && <span className="block text-xs font-medium text-ink/60 mb-1">{label}</span>}
       <input
-        className={`w-full rounded-md border border-ink/15 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none ${className}`}
+        type={type}
+        className={`w-full rounded-md border border-ink/15 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none ${shouldUppercase ? "uppercase" : ""} ${className}`}
+        onChange={handleChange}
         {...props}
       />
       {error && <span className="text-xs text-danger mt-1 block">{error}</span>}
