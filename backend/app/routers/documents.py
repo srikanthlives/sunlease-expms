@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.session import get_db
-from app.models.models import Document, User, Project, Expense, Invoice, EmployeeClaim, EmployeeClaimLine
-from app.models.enums import DocumentType, ClaimStatus, RoleName
+from app.models.models import Document, User, Project, Expense, Invoice, Payment, EmployeeClaim, EmployeeClaimLine
+from app.models.enums import DocumentType, ClaimStatus, RoleName, EditableEntityType
 from app.schemas.transactions import DocumentOut
+from app.services import edit_request_service
 from app.services.document_service import save_upload
 from app.services.storage import get_storage
 
@@ -152,6 +153,19 @@ def list_claim_documents(claim_id: int, db: Session = Depends(get_db), _=Depends
     return q.order_by(Document.id.desc()).all()
 
 
+def _resolve_attachment_parent(db: Session, doc: Document):
+    """The Expense/Invoice/Payment an attachment belongs to, and its
+    edit_request_service entity-type tag - used to check whether that
+    parent record has been verified (see is_locked_for_accounts)."""
+    if doc.invoice_id:
+        return EditableEntityType.INVOICE, db.query(Invoice).filter(Invoice.id == doc.invoice_id).first()
+    if doc.expense_id:
+        return EditableEntityType.EXPENSE, db.query(Expense).filter(Expense.id == doc.expense_id).first()
+    if doc.payment_id:
+        return EditableEntityType.PAYMENT, db.query(Payment).filter(Payment.id == doc.payment_id).first()
+    return None, None
+
+
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_document(document_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     doc = db.query(Document).filter(Document.id == document_id).first()
@@ -159,8 +173,17 @@ def delete_document(document_id: int, db: Session = Depends(get_db), user: User 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
     if doc.claim_id or doc.claim_line_id:
         _authorize_claim_document_change(db, user, doc.claim_id, doc.claim_line_id)
-    elif user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin/Super Admin can delete this attachment")
+    elif user.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
+        pass
+    elif user.role.name == RoleName.ACCOUNTS:
+        parent_type, parent = _resolve_attachment_parent(db, doc)
+        if parent_type and edit_request_service.is_locked_for_accounts(parent_type, parent):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This record has been verified by Admin - the attachment can no longer be deleted")
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this attachment")
+    # Removes the underlying file (local disk or R2, per configured storage
+    # backend) in addition to the Document row - a real delete, not just
+    # unlinking the reference.
     get_storage().delete_file(doc.stored_filename)
     db.delete(doc)
     db.commit()

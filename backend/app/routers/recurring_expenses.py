@@ -3,14 +3,16 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy import or_
 
+import datetime as dt
+
 from app.core.deps import get_current_user, require_accounts, require_admin
 from app.db.session import get_db
-from app.models.enums import RecurringAmountType, RecurringInstanceStatus, RecurringPayeeType, RoleName
+from app.models.enums import AuditAction, RecurringAmountType, RecurringInstanceStatus, RecurringPayeeType, RoleName
 from app.models.models import Project, RecurringExpense, RecurringExpenseInstance, User
 from app.schemas.recurring_expenses import (
     InstanceRejectRequest, InstanceReviewRequest, RecurringExpenseCreate, RecurringExpenseInstanceOut, RecurringExpenseOut,
 )
-from app.services import recurring_expense_service
+from app.services import audit_service, recurring_expense_service
 
 router = APIRouter(prefix="/api/v1/recurring-expenses", tags=["recurring-expenses"])
 
@@ -37,6 +39,15 @@ def _authorize_template_access(tpl: RecurringExpense, user: User):
     project = tpl.project
     if project and project.accounts_approver_id and project.accounts_approver_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not the assigned approver for this project")
+
+
+def _authorize_template_edit(tpl: RecurringExpense, user: User):
+    """Same verification-freeze rule as a direct Expense: Accounts may edit
+    the template freely until Admin/Super Admin verifies it, after which
+    only Admin/Super Admin can change it directly."""
+    _authorize_template_access(tpl, user)
+    if user.role.name == RoleName.ACCOUNTS and tpl.is_verified:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This recurring expense has been verified by Admin and can no longer be edited directly")
 
 
 def _instance_to_out(i: RecurringExpenseInstance) -> RecurringExpenseInstanceOut:
@@ -89,12 +100,30 @@ def list_recurring_expenses(db: Session = Depends(get_db), user: User = Depends(
     return q.order_by(RecurringExpense.name).all()
 
 
+@router.delete("/{template_id}", dependencies=[Depends(require_accounts)])
+def delete_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Hard delete - only for a template with no generated instances yet
+    (an already-billed template must be deactivated instead, so its history
+    stays intact). Admin/Super Admin may delete regardless of verification;
+    Accounts is locked out once Admin verifies it, same as the edit rule."""
+    tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    _authorize_template_edit(tpl, user)
+    if db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.recurring_expense_id == template_id).first():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This recurring expense has already generated billing instances - deactivate it instead of deleting")
+    audit_service.record(db, "RECURRING_EXPENSE", tpl.id, AuditAction.DELETE, user.id, {"name": tpl.name})
+    db.delete(tpl)
+    db.commit()
+    return {"detail": "Recurring expense deleted"}
+
+
 @router.put("/{template_id}", response_model=RecurringExpenseOut, dependencies=[Depends(require_accounts)])
 def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
     if not tpl:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
-    _authorize_template_access(tpl, user)
+    _authorize_template_edit(tpl, user)
     if payload.frequency not in ("WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUALLY"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid frequency")
     if payload.amount_type not in RecurringAmountType.ALL:
@@ -104,6 +133,36 @@ def update_recurring_expense(template_id: int, payload: RecurringExpenseCreate, 
     for field, value in payload.model_dump().items():
         setattr(tpl, field, value)
     db.add(tpl)
+    db.commit()
+    db.refresh(tpl)
+    return tpl
+
+
+@router.post("/{template_id}/verify", response_model=RecurringExpenseOut, dependencies=[Depends(require_admin)])
+def verify_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    tpl.is_verified = True
+    tpl.verified_by = user.id
+    tpl.verified_at = dt.datetime.utcnow()
+    db.add(tpl)
+    audit_service.record(db, "RECURRING_EXPENSE", tpl.id, AuditAction.VERIFY, user.id, {})
+    db.commit()
+    db.refresh(tpl)
+    return tpl
+
+
+@router.post("/{template_id}/unverify", response_model=RecurringExpenseOut, dependencies=[Depends(require_admin)])
+def unverify_recurring_expense(template_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    tpl = db.query(RecurringExpense).filter(RecurringExpense.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurring expense not found")
+    tpl.is_verified = False
+    tpl.verified_by = None
+    tpl.verified_at = None
+    db.add(tpl)
+    audit_service.record(db, "RECURRING_EXPENSE", tpl.id, AuditAction.UNVERIFY, user.id, {})
     db.commit()
     db.refresh(tpl)
     return tpl

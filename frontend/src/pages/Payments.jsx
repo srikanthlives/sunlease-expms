@@ -236,7 +236,7 @@ export default function Payments() {
             },
             {
               key: "attachments", header: "Receipt",
-              render: (r) => <Attachments documentType="PAYMENT" paymentId={r.id} compact label="Receipt" />,
+              render: (r) => <Attachments documentType="PAYMENT" paymentId={r.id} compact label="Receipt" canDelete={isAdmin || !r.is_verified} />,
             },
             ...(canEdit || isAdmin ? [{
               key: "__actions", header: "",

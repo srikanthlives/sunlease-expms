@@ -15,7 +15,7 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
  */
 export default function Attachments({
   documentType, expenseId, invoiceId, paymentId, claimId, claimLineId, claimFullId,
-  label = "Attachments", compact = false, readOnly = false,
+  label = "Attachments", compact = false, readOnly = false, canDelete = true,
 }) {
   const [open, setOpen] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -130,7 +130,7 @@ export default function Attachments({
                     <button type="button" onClick={() => setPreviewDoc(d)} className="text-brand-700 hover:text-brand-900 shrink-0" title="Preview">
                       <Eye size={16} />
                     </button>
-                    {!readOnly && (
+                    {!readOnly && canDelete && (
                       <button type="button" onClick={() => setDeleteTarget(d)} className="text-ink/30 hover:text-danger shrink-0" title="Remove">
                         <Trash2 size={15} />
                       </button>

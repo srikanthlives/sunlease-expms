@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
 import { Card, Table, Button, Input, Select, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
-import { Plus, X, Pencil, Power } from "lucide-react";
+import { Plus, X, Pencil, Power, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 
 const FREQUENCIES = [
   { value: "WEEKLY", label: "Weekly" },
@@ -157,9 +158,12 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
 }
 
 function TemplatesTab({ masters }) {
+  const { user } = useAuth();
+  const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [error, setError] = useState("");
 
   function load() { client.get("/recurring-expenses").then((res) => setRows(res.data)); }
   useEffect(load, []);
@@ -167,6 +171,22 @@ function TemplatesTab({ masters }) {
   async function toggleActive(row) {
     await client.post(`/recurring-expenses/${row.id}/${row.is_active ? "deactivate" : "activate"}`);
     load();
+  }
+
+  async function toggleVerified(row) {
+    await client.post(`/recurring-expenses/${row.id}/${row.is_verified ? "unverify" : "verify"}`);
+    load();
+  }
+
+  async function deleteTemplate(row) {
+    if (!window.confirm(`Delete "${row.name}"? This cannot be undone.`)) return;
+    setError("");
+    try {
+      await client.delete(`/recurring-expenses/${row.id}`);
+      load();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    }
   }
 
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
@@ -190,16 +210,40 @@ function TemplatesTab({ masters }) {
     { key: "next_occurrence_date", header: "Next Bill Date", render: (r) => formatDate(r.next_occurrence_date) },
     { key: "is_active", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
     {
-      key: "__actions", header: "", render: (r) => (
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={() => { setEditing(r); setShowForm(true); }} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
-            <Pencil size={12} /> Edit
-          </button>
-          <button type="button" onClick={() => toggleActive(r)} className="text-xs inline-flex items-center gap-1 text-ink/60 hover:underline">
-            <Power size={12} /> {r.is_active ? "Deactivate" : "Activate"}
-          </button>
-        </div>
-      ),
+      key: "is_verified", header: "Verified",
+      render: (r) => r.is_verified
+        ? <span className="text-xs text-ok whitespace-nowrap" title={r.verified_by_name ? `Verified by ${r.verified_by_name}` : ""}>✓ Verified</span>
+        : <span className="text-xs text-ink/40">—</span>,
+    },
+    {
+      key: "__actions", header: "", render: (r) => {
+        const canEdit = isAdmin || !r.is_verified;
+        return (
+          <div className="flex items-center gap-3">
+            {canEdit && (
+              <button type="button" onClick={() => { setEditing(r); setShowForm(true); }} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline">
+                <Pencil size={12} /> Edit
+              </button>
+            )}
+            {canEdit && (
+              <button type="button" onClick={() => deleteTemplate(r)} className="text-xs inline-flex items-center gap-1 text-danger hover:underline">
+                <Trash2 size={12} /> Delete
+              </button>
+            )}
+            <button type="button" onClick={() => toggleActive(r)} className="text-xs inline-flex items-center gap-1 text-ink/60 hover:underline">
+              <Power size={12} /> {r.is_active ? "Deactivate" : "Activate"}
+            </button>
+            {isAdmin && (
+              <button
+                type="button" onClick={() => toggleVerified(r)}
+                className={`text-xs inline-flex items-center gap-1 hover:underline ${r.is_verified ? "text-ink/60" : "text-ok"}`}
+              >
+                {r.is_verified ? <ShieldOff size={12} /> : <ShieldCheck size={12} />} {r.is_verified ? "Unverify" : "Verify"}
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -208,6 +252,7 @@ function TemplatesTab({ masters }) {
       <div className="flex justify-end">
         <Button onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={16} /> New Recurring Expense</Button>
       </div>
+      {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
       {showForm && (
         <TemplateForm masters={masters} editing={editing} onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); load(); }} />

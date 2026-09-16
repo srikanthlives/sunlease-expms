@@ -149,7 +149,7 @@ export default function Invoices() {
             },
             {
               key: "attachments", header: "Invoice / Bill",
-              render: (r) => <Attachments documentType="INVOICE" invoiceId={r.id} compact label="Invoice/Bill" />,
+              render: (r) => <Attachments documentType="INVOICE" invoiceId={r.id} compact label="Invoice/Bill" canDelete={isAdmin || !r.is_verified} />,
             },
             ...(canEdit || isAdmin ? [{
               key: "__actions", header: "",

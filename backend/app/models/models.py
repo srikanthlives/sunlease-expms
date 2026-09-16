@@ -547,6 +547,13 @@ class RecurringExpense(Base):
     next_occurrence_date = Column(Date, nullable=False)
     is_active = Column(Boolean, default=True)
 
+    # Admin/Super Admin freeze, same semantics as Expense/Payment: once
+    # verified, Accounts can no longer edit the template directly (see
+    # update_recurring_expense in routers/recurring_expenses.py).
+    is_verified = Column(Boolean, default=False)
+    verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
@@ -556,6 +563,11 @@ class RecurringExpense(Base):
     employee = relationship("Employee", foreign_keys=[employee_id])
     category = relationship("ExpenseCategory", foreign_keys=[category_id])
     sub_category = relationship("ExpenseSubCategory", foreign_keys=[sub_category_id])
+    verifier = relationship("User", foreign_keys=[verified_by])
+
+    @property
+    def verified_by_name(self):
+        return (self.verifier.full_name or self.verifier.username) if self.verifier else None
 
 
 class RecurringExpenseInstance(Base):

@@ -330,7 +330,7 @@ export default function Expenses() {
                 ) : r.source_type === "EMPLOYEE_CLAIM" ? (
                   <Attachments claimFullId={r.source_id} compact readOnly label="Proof" />
                 ) : (
-                  <Attachments documentType="EXPENSE" expenseId={r.id} compact label="Attach" />
+                  <Attachments documentType="EXPENSE" expenseId={r.id} compact label="Attach" canDelete={isAdmin || !r.is_verified} />
                 ),
             },
             ...(canEdit || isAdmin ? [{

@@ -57,6 +57,10 @@ class RecurringExpenseOut(BaseModel):
     description: str | None = None
     next_occurrence_date: dt.date
     is_active: bool
+    is_verified: bool = False
+    verified_by: int | None = None
+    verified_by_name: str | None = None
+    verified_at: dt.datetime | None = None
     created_at: dt.datetime
 
     class Config:
