@@ -426,7 +426,7 @@ export function VendorsMaster() {
       <Card>
         <Table
           columns={[
-            { key: "vendor_code", header: "Code" },
+            { key: "vendor_code", header: "Code", render: (r) => <Truncate maxWidth={100}>{r.vendor_code}</Truncate> },
             { key: "vendor_name", header: "Name", render: (row) => <Truncate maxWidth={220}>{vendorLabel(row)}</Truncate> },
             { key: "contact_person", header: "Contact Person", render: (r) => <Truncate maxWidth={150}>{r.contact_person}</Truncate> },
             { key: "phone", header: "Contact Number" },
