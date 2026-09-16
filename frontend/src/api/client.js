@@ -31,5 +31,13 @@ client.interceptors.response.use(
 export default client;
 
 export function apiErrorMessage(err) {
-  return err?.response?.data?.detail || err?.message || "Something went wrong";
+  const detail = err?.response?.data?.detail;
+  // FastAPI/Pydantic validation errors (422) come back as a list of
+  // {loc, msg, ...} objects, not a string - render them as text or the
+  // above `<div>{error}</div>` call sites would throw trying to render an
+  // array of objects as a React child.
+  if (Array.isArray(detail)) {
+    return detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+  }
+  return detail || err?.message || "Something went wrong";
 }

@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+import re
+
+from pydantic import BaseModel, field_validator
 
 
 class ProjectBase(BaseModel):
@@ -85,6 +87,17 @@ class VendorCreate(VendorBase):
     # Which projects this vendor belongs to. Empty = general/universal
     # vendor, visible regardless of project.
     project_ids: list[int] = []
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v):
+        if v is None or v.strip() == "":
+            return v
+        digits = re.sub(r"[\s\-()]", "", v)
+        digits = re.sub(r"^(\+91|91|0)", "", digits)
+        if not re.fullmatch(r"[6-9]\d{9}", digits):
+            raise ValueError("Contact number must be a valid 10-digit mobile number")
+        return digits
 
 
 class VendorOut(VendorBase):

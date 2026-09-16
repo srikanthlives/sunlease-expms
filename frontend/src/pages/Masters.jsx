@@ -7,6 +7,22 @@ function emptyForm(fields) {
   return Object.fromEntries(fields.map((f) => [f.key, f.default || ""]));
 }
 
+function isValidContactNumber(value) {
+  const digits = value.replace(/[\s\-()]/g, "").replace(/^(\+91|91|0)/, "");
+  return /^[6-9]\d{9}$/.test(digits);
+}
+
+// Keeps a table cell to a single line, clipping overflow with an ellipsis
+// instead of wrapping the row onto multiple lines; full text is still
+// available via the native title tooltip on hover.
+function Truncate({ children, maxWidth = 200 }) {
+  return (
+    <span className="block truncate" style={{ maxWidth }} title={typeof children === "string" ? children : undefined}>
+      {children}
+    </span>
+  );
+}
+
 function MasterPage({ title, subtitle, endpoint, columns, fields, idField = "id" }) {
   const [rows, setRows] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -294,6 +310,10 @@ export function VendorsMaster() {
 
   async function submit(e) {
     e.preventDefault();
+    if (form.phone && !isValidContactNumber(form.phone)) {
+      setError("Contact number must be a valid 10-digit mobile number");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -344,7 +364,11 @@ export function VendorsMaster() {
               <Input label="Vendor Code" required value={form.vendor_code} onChange={(e) => setForm((s) => ({ ...s, vendor_code: e.target.value }))} />
               <Input label="Vendor/Company Name" required value={form.vendor_name} onChange={(e) => setForm((s) => ({ ...s, vendor_name: e.target.value }))} />
               <Input label="Contact Person" value={form.contact_person} onChange={(e) => setForm((s) => ({ ...s, contact_person: e.target.value }))} />
-              <Input label="Contact Number" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} />
+              <Input
+                label="Contact Number" value={form.phone} inputMode="numeric" maxLength={13} uppercase={false}
+                onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))}
+                error={form.phone && !isValidContactNumber(form.phone) ? "Enter a valid 10-digit mobile number" : undefined}
+              />
               <Input label="GSTIN" value={form.gstin} onChange={(e) => setForm((s) => ({ ...s, gstin: e.target.value }))} />
               <Input label="Location" value={form.location} onChange={(e) => setForm((s) => ({ ...s, location: e.target.value }))} />
               <Input label="Pincode" value={form.pincode} onChange={(e) => setForm((s) => ({ ...s, pincode: e.target.value }))} />
@@ -403,14 +427,14 @@ export function VendorsMaster() {
         <Table
           columns={[
             { key: "vendor_code", header: "Code" },
-            { key: "vendor_name", header: "Name", render: (row) => vendorLabel(row) },
-            { key: "contact_person", header: "Contact Person" },
+            { key: "vendor_name", header: "Name", render: (row) => <Truncate maxWidth={220}>{vendorLabel(row)}</Truncate> },
+            { key: "contact_person", header: "Contact Person", render: (r) => <Truncate maxWidth={150}>{r.contact_person}</Truncate> },
             { key: "phone", header: "Contact Number" },
-            { key: "location", header: "Location" },
+            { key: "location", header: "Location", render: (r) => <Truncate maxWidth={150}>{r.location}</Truncate> },
             { key: "pincode", header: "Pincode" },
             { key: "gstin", header: "GSTIN" },
-            { key: "products_services", header: "Products/Services" },
-            { key: "projects", header: "Projects", render: (r) => <span className="text-xs">{projectNames(r.project_ids)}</span> },
+            { key: "products_services", header: "Products/Services", render: (r) => <Truncate maxWidth={220}>{r.products_services}</Truncate> },
+            { key: "projects", header: "Projects", render: (r) => <Truncate maxWidth={180}><span className="text-xs">{projectNames(r.project_ids)}</span></Truncate> },
             { key: "is_active", header: "Status", render: (r) => <span className={r.is_active ? "text-success" : "text-ink/40"}>{r.is_active ? "Active" : "Inactive"}</span> },
             {
               key: "__edit", header: "",
