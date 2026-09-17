@@ -463,7 +463,12 @@ function ExpenseForm({ masters, onClose, onCreated }) {
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
           <SubCategorySelect categoryId={form.category_id} value={form.sub_category_id} onChange={(v) => set("sub_category_id", v)} />
-          <Input label="Supplier Name" value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} />
+          <div>
+            <Input label="Supplier / Payee Name" value={form.supplier_name} onChange={(e) => set("supplier_name", e.target.value)} list="direct-expense-supplier-options" />
+            <datalist id="direct-expense-supplier-options">
+              {masters.vendors.map((v) => <option key={v.id} value={v.vendor_name} />)}
+            </datalist>
+          </div>
           <Input label="Voucher / Bill No" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} />
         </div>
         <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
