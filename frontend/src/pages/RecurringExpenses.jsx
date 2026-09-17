@@ -16,15 +16,14 @@ const FREQUENCIES = [
 
 const PAYEE_TYPES = [
   { value: "DIRECT", label: "Direct Expense" },
-  { value: "VENDOR", label: "Vendor Expense" },
-  { value: "EMPLOYEE", label: "Employee Expense" },
+  { value: "VENDOR", label: "Vendor Expense (Invoice)" },
 ];
 
 function emptyForm() {
   return {
     name: "", frequency: "MONTHLY", amount_type: "FIXED", fixed_amount: "",
     lead_days: 7, due_in_days: "", payee_type: "DIRECT", supplier_name: "",
-    project_id: "", vendor_id: "", employee_id: "",
+    project_id: "", vendor_id: "",
     category_id: "", sub_category_id: "", description: "", next_occurrence_date: "", is_active: true,
   };
 }
@@ -35,7 +34,7 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
     fixed_amount: editing.fixed_amount ?? "",
     due_in_days: editing.due_in_days ?? "",
     supplier_name: editing.supplier_name ?? "",
-    project_id: editing.project_id ?? "", vendor_id: editing.vendor_id ?? "", employee_id: editing.employee_id ?? "",
+    project_id: editing.project_id ?? "", vendor_id: editing.vendor_id ?? "",
     sub_category_id: editing.sub_category_id ?? "",
   } : emptyForm());
   const [error, setError] = useState("");
@@ -61,7 +60,6 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
         supplier_name: form.payee_type === "DIRECT" ? form.supplier_name : null,
         project_id: Number(form.project_id),
         vendor_id: form.payee_type === "VENDOR" ? Number(form.vendor_id) : null,
-        employee_id: form.payee_type === "EMPLOYEE" ? Number(form.employee_id) : null,
         category_id: Number(form.category_id),
         sub_category_id: form.sub_category_id || null,
         description: form.description || null,
@@ -120,8 +118,14 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
           <div />
 
           {form.payee_type === "DIRECT" && (
-            <Input label="Supplier / Payee Name" required value={form.supplier_name}
-              onChange={(e) => set("supplier_name", e.target.value)} />
+            <div>
+              <Input label="Supplier / Payee Name" required value={form.supplier_name}
+                onChange={(e) => set("supplier_name", e.target.value)} list="supplier-name-options" />
+              <datalist id="supplier-name-options">
+                {masters.vendors.map((v) => <option key={v.id} value={v.vendor_name}>{vendorLabel(v)}</option>)}
+              </datalist>
+              <p className="text-xs text-ink/40 mt-1">Pick a vendor from the suggestions, or type a payee name manually.</p>
+            </div>
           )}
           {form.payee_type === "VENDOR" && (
             <Select label="Vendor" required value={form.vendor_id} onChange={(e) => set("vendor_id", e.target.value)}>
@@ -129,12 +133,6 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
               {masters.vendors
                 .filter((v) => !form.project_id || !v.project_ids?.length || v.project_ids.includes(Number(form.project_id)))
                 .map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
-            </Select>
-          )}
-          {form.payee_type === "EMPLOYEE" && (
-            <Select label="Employee" required value={form.employee_id} onChange={(e) => set("employee_id", e.target.value)}>
-              <option value="">— Select —</option>
-              {masters.employees.map((e) => <option key={e.id} value={e.id}>{e.employee_name}</option>)}
             </Select>
           )}
 
@@ -194,7 +192,6 @@ function TemplatesTab({ masters }) {
   const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
   const payeeName = (row) => {
     if (row.payee_type === "VENDOR") return vendorLabel(masters.vendors.find((v) => v.id === row.vendor_id)) || "—";
-    if (row.payee_type === "EMPLOYEE") return masters.employees.find((e) => e.id === row.employee_id)?.employee_name || "—";
     return row.supplier_name || "—";
   };
 

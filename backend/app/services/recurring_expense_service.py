@@ -6,10 +6,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
-    AuditAction, RecurrenceFrequency, RecurringAmountType, RecurringInstanceStatus, RoleName, SourceType,
+    AuditAction, RecurrenceFrequency, RecurringAmountType, RecurringInstanceStatus, RecurringPayeeType, RoleName, SourceType,
 )
 from app.models.models import RecurringExpense, RecurringExpenseInstance, User
-from app.services import audit_service, expense_service
+from app.services import audit_service, expense_service, invoice_service
 
 _STEP = {
     RecurrenceFrequency.WEEKLY: relativedelta(weeks=1),
@@ -69,76 +69,78 @@ def _assert_accounts_reviewer(user: User):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to review this instance")
 
 
-def _assert_admin_reviewer(user: User):
-    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Admin/Super Admin may give final approval")
-
-
 def accounts_review(
     db: Session, instance: RecurringExpenseInstance, actor: User, amount: Decimal | None,
     bill_number: str | None = None, description: str | None = None, remarks: str | None = None,
+    cgst: Decimal | None = None, sgst: Decimal | None = None, igst: Decimal | None = None, other_tax: Decimal | None = None,
 ) -> RecurringExpenseInstance:
     """Accounts fills in (OPEN type) or corrects (FIXED type) the actual bill
     amount, records the voucher/bill number off the physical bill (not known
     until now, since the recurring template is set up ahead of any actual
-    bill arriving), can adjust the description that will land on the
-    resulting Expense, and sends it on to Admin for final approval."""
+    bill arriving), can adjust the description and GST/other-tax breakdown,
+    and confirms it - this is final, no separate Admin approval step. Posts
+    as an Invoice (VENDOR payee) or a direct Expense (DIRECT payee),
+    depending on the template's payee_type."""
     if instance.status != RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This instance is not awaiting Accounts review")
     _assert_accounts_reviewer(actor)
     if amount is not None:
         instance.amount = amount
     if instance.amount is None or instance.amount <= 0:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "An amount is required before this can go to Admin for approval")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "An amount is required to confirm this instance")
     if bill_number is not None:
         instance.bill_number = bill_number
     if description is not None:
         instance.description = description
-    instance.status = RecurringInstanceStatus.PENDING_ADMIN_APPROVAL
+    if cgst is not None:
+        instance.cgst = cgst
+    if sgst is not None:
+        instance.sgst = sgst
+    if igst is not None:
+        instance.igst = igst
+    if other_tax is not None:
+        instance.other_tax = other_tax
+
+    tpl = instance.recurring_expense
+    description_final = instance.description or tpl.description or tpl.name
+
+    if tpl.payee_type == RecurringPayeeType.VENDOR:
+        if not instance.bill_number:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "An invoice/bill number is required to record this as an Invoice")
+        invoice = invoice_service.create_invoice(
+            db, invoice_number=instance.bill_number, vendor_id=tpl.vendor_id, invoice_date=instance.occurrence_date,
+            due_date=instance.due_date, project_id=tpl.project_id, description=description_final,
+            taxable_amount=instance.amount, cgst=instance.cgst, sgst=instance.sgst, igst=instance.igst, other_tax=instance.other_tax,
+            category_id=tpl.category_id, sub_category_id=tpl.sub_category_id, created_by=actor.id,
+        )
+        instance.invoice_id = invoice.id
+        instance.expense_id = invoice.expense_id
+        audit_detail = {"stage": "accounts", "invoice_id": invoice.id}
+    else:
+        expense = expense_service.create_expense_record(
+            db, source_type=SourceType.RECURRING_EXPENSE, source_id=instance.id, expense_date=instance.occurrence_date,
+            project_id=tpl.project_id, vendor_id=None, employee_id=None,
+            category_id=tpl.category_id, sub_category_id=tpl.sub_category_id,
+            description=description_final,
+            base_amount=instance.amount, gst_amount=instance.cgst, other_amount=instance.other_tax,
+            created_by=actor.id, supplier_name=tpl.supplier_name, bill_number=instance.bill_number,
+        )
+        instance.expense_id = expense.id
+        audit_detail = {"stage": "accounts", "expense_id": expense.id}
+
+    instance.status = RecurringInstanceStatus.APPROVED
     instance.accounts_reviewed_by = actor.id
     instance.accounts_reviewed_at = dt.datetime.utcnow()
     db.add(instance)
-    audit_service.record(
-        db, "RECURRING_EXPENSE_INSTANCE", instance.id, AuditAction.APPROVE, actor.id,
-        {"stage": "accounts", "amount": str(instance.amount), "bill_number": instance.bill_number, "remarks": remarks},
-    )
-    return instance
-
-
-def admin_approve(db: Session, instance: RecurringExpenseInstance, actor: User) -> RecurringExpenseInstance:
-    """Final approval - creates the actual Expense record, exactly like any
-    other direct expense, ready for payment via the normal Payments flow."""
-    if instance.status != RecurringInstanceStatus.PENDING_ADMIN_APPROVAL:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This instance is not awaiting Admin approval")
-    _assert_admin_reviewer(actor)
-    tpl = instance.recurring_expense
-    expense = expense_service.create_expense_record(
-        db, source_type=SourceType.RECURRING_EXPENSE, source_id=instance.id, expense_date=instance.occurrence_date,
-        project_id=tpl.project_id, vendor_id=tpl.vendor_id, employee_id=tpl.employee_id,
-        category_id=tpl.category_id, sub_category_id=tpl.sub_category_id,
-        description=instance.description or tpl.description or tpl.name,
-        base_amount=instance.amount, gst_amount=Decimal("0"), other_amount=Decimal("0"),
-        created_by=actor.id, supplier_name=tpl.supplier_name, bill_number=instance.bill_number,
-    )
-    instance.status = RecurringInstanceStatus.APPROVED
-    instance.admin_reviewed_by = actor.id
-    instance.admin_reviewed_at = dt.datetime.utcnow()
-    instance.expense_id = expense.id
-    db.add(instance)
-    audit_service.record(
-        db, "RECURRING_EXPENSE_INSTANCE", instance.id, AuditAction.APPROVE, actor.id,
-        {"stage": "admin", "expense_id": expense.id},
-    )
+    audit_detail.update({"amount": str(instance.amount), "bill_number": instance.bill_number, "remarks": remarks})
+    audit_service.record(db, "RECURRING_EXPENSE_INSTANCE", instance.id, AuditAction.APPROVE, actor.id, audit_detail)
     return instance
 
 
 def reject(db: Session, instance: RecurringExpenseInstance, actor: User, reason: str) -> RecurringExpenseInstance:
-    if instance.status not in (RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW, RecurringInstanceStatus.PENDING_ADMIN_APPROVAL):
+    if instance.status != RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This instance is not pending review")
-    if instance.status == RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW:
-        _assert_accounts_reviewer(actor)
-    else:
-        _assert_admin_reviewer(actor)
+    _assert_accounts_reviewer(actor)
     instance.status = RecurringInstanceStatus.REJECTED
     instance.rejection_reason = reason
     db.add(instance)

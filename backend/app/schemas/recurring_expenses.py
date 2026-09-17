@@ -34,8 +34,6 @@ class RecurringExpenseCreate(BaseModel):
             raise ValueError("supplier_name is required for a Direct Expense recurring expense")
         if self.payee_type == "VENDOR" and not self.vendor_id:
             raise ValueError("vendor_id is required for a Vendor Expense recurring expense")
-        if self.payee_type == "EMPLOYEE" and not self.employee_id:
-            raise ValueError("employee_id is required for an Employee Expense recurring expense")
         return self
 
 
@@ -76,6 +74,10 @@ class RecurringExpenseInstanceOut(BaseModel):
     amount: Decimal | None = None
     bill_number: str | None = None
     description: str | None = None
+    cgst: Decimal = Decimal("0")
+    sgst: Decimal = Decimal("0")
+    igst: Decimal = Decimal("0")
+    other_tax: Decimal = Decimal("0")
     status: str
     amount_type: str | None = None
     payee_type: str | None = None
@@ -88,12 +90,11 @@ class RecurringExpenseInstanceOut(BaseModel):
     accounts_reviewed_by: int | None = None
     accounts_reviewed_by_name: str | None = None
     accounts_reviewed_at: dt.datetime | None = None
-    admin_reviewed_by: int | None = None
-    admin_reviewed_by_name: str | None = None
-    admin_reviewed_at: dt.datetime | None = None
     rejection_reason: str | None = None
     expense_id: int | None = None
     expense_number: str | None = None
+    invoice_id: int | None = None
+    invoice_number: str | None = None
     generated_at: dt.datetime
 
 
@@ -101,6 +102,10 @@ class InstanceReviewRequest(BaseModel):
     amount: Decimal | None = None
     bill_number: str | None = None
     description: str | None = None
+    cgst: Decimal | None = None
+    sgst: Decimal | None = None
+    igst: Decimal | None = None
+    other_tax: Decimal | None = None
     remarks: str | None = None
 
 

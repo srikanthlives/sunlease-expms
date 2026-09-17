@@ -523,11 +523,9 @@ class RecurringExpense(Base):
     # Bill due date = occurrence_date + due_in_days. Null = no due date tracked.
     due_in_days = Column(Integer, nullable=True)
 
-    # Who the bill is paid to - mirrors Expense's source_type distinction:
-    # DIRECT (no vendor master record, free-text payee), VENDOR (vendor
-    # master) or EMPLOYEE (reimbursement-style, e.g. guesthouse rent paid by
-    # an employee). Exactly one of vendor_id/employee_id/supplier_name is set,
-    # matching payee_type.
+    # Who the bill is paid to, and what kind of record it posts as once
+    # confirmed: DIRECT (free-text payee, no vendor master record - posts as
+    # a direct Expense) or VENDOR (vendor master - posts as an Invoice).
     payee_type = Column(String(10), nullable=False, default="DIRECT")  # RecurringPayeeType
     supplier_name = Column(String(255), nullable=True)  # used when payee_type=DIRECT
     # No bill/voucher number here - it isn't known until an actual bill
@@ -582,29 +580,38 @@ class RecurringExpenseInstance(Base):
     occurrence_date = Column(Date, nullable=False)  # the bill date this instance represents
     due_date = Column(Date, nullable=True)
     # Pre-filled with the template's fixed_amount for FIXED; null (Accounts
-    # must fill it in) for OPEN.
+    # must fill it in) for OPEN. Represents the taxable/base amount - GST
+    # columns below are added on top of it.
     amount = Column(Numeric(14, 2), nullable=True)
     # Voucher/bill number off the actual physical bill - unknowable at
     # template-creation time (the bill hasn't arrived yet), so Accounts
-    # enters it here at review time, right before sending to Admin.
+    # enters it here at review time. For a VENDOR-payee template this is
+    # used as the Invoice's invoice_number.
     bill_number = Column(String(100), nullable=True)
     description = Column(Text)
+
+    # GST/other-tax breakdown, filled in by Accounts at review time.
+    # DIRECT (posts as Expense) only uses cgst (as a lump "GST amount") and
+    # other_tax; VENDOR (posts as Invoice) uses the full cgst/sgst/igst split.
+    cgst = Column(Numeric(14, 2), nullable=False, default=0)
+    sgst = Column(Numeric(14, 2), nullable=False, default=0)
+    igst = Column(Numeric(14, 2), nullable=False, default=0)
+    other_tax = Column(Numeric(14, 2), nullable=False, default=0)
 
     status = Column(String(30), nullable=False, default="PENDING_ACCOUNTS_REVIEW")  # RecurringInstanceStatus
 
     accounts_reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     accounts_reviewed_at = Column(DateTime, nullable=True)
-    admin_reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    admin_reviewed_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
 
-    expense_id = Column(Integer, ForeignKey("expenses.id"), nullable=True)  # set once Admin-approved
+    expense_id = Column(Integer, ForeignKey("expenses.id"), nullable=True)  # set once confirmed (Expense or Invoice's linked Expense)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)  # set once confirmed, for VENDOR payee only
     generated_at = Column(DateTime, default=now)
 
     recurring_expense = relationship("RecurringExpense", foreign_keys=[recurring_expense_id])
     expense = relationship("Expense", foreign_keys=[expense_id])
+    invoice = relationship("Invoice", foreign_keys=[invoice_id])
     accounts_reviewer = relationship("User", foreign_keys=[accounts_reviewed_by])
-    admin_reviewer = relationship("User", foreign_keys=[admin_reviewed_by])
 
     __table_args__ = (UniqueConstraint("recurring_expense_id", "occurrence_date", name="uq_recurring_instance_occurrence"),)
 

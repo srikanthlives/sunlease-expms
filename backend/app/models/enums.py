@@ -114,18 +114,17 @@ class RecurringAmountType:
 
 
 class RecurringPayeeType:
-    DIRECT = "DIRECT"      # free-text payee, no vendor/employee master record
-    VENDOR = "VENDOR"
-    EMPLOYEE = "EMPLOYEE"
+    DIRECT = "DIRECT"      # free-text payee, no vendor master record - posts as a direct Expense
+    VENDOR = "VENDOR"      # posts as an Invoice against the vendor
 
-    ALL = [DIRECT, VENDOR, EMPLOYEE]
+    ALL = [DIRECT, VENDOR]
 
 
 class RecurringInstanceStatus:
     # Awaiting Accounts: for OPEN amount type they must fill in the actual
-    # bill amount; for FIXED they may correct it if the bill changed. Either
-    # way Accounts must act before it goes to Admin.
+    # bill amount; for FIXED they may correct it if the bill changed.
+    # Accounts confirmation is final - it posts the Expense/Invoice directly,
+    # no separate Admin approval stage.
     PENDING_ACCOUNTS_REVIEW = "PENDING_ACCOUNTS_REVIEW"
-    PENDING_ADMIN_APPROVAL = "PENDING_ADMIN_APPROVAL"
-    APPROVED = "APPROVED"  # Expense created
+    APPROVED = "APPROVED"  # Expense/Invoice created
     REJECTED = "REJECTED"

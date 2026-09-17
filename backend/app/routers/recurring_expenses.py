@@ -55,16 +55,16 @@ def _instance_to_out(i: RecurringExpenseInstance) -> RecurringExpenseInstanceOut
     return RecurringExpenseInstanceOut(
         id=i.id, recurring_expense_id=i.recurring_expense_id, recurring_expense_name=tpl.name if tpl else None,
         occurrence_date=i.occurrence_date, due_date=i.due_date, amount=i.amount, bill_number=i.bill_number, description=i.description,
+        cgst=i.cgst, sgst=i.sgst, igst=i.igst, other_tax=i.other_tax,
         status=i.status, amount_type=tpl.amount_type if tpl else None,
         payee_type=tpl.payee_type if tpl else None, supplier_name=tpl.supplier_name if tpl else None,
         project_id=tpl.project_id if tpl else None, vendor_id=tpl.vendor_id if tpl else None,
         employee_id=tpl.employee_id if tpl else None, category_id=tpl.category_id if tpl else None,
         sub_category_id=tpl.sub_category_id if tpl else None,
         accounts_reviewed_by=i.accounts_reviewed_by, accounts_reviewed_by_name=_reviewer_name(i.accounts_reviewer),
-        accounts_reviewed_at=i.accounts_reviewed_at,
-        admin_reviewed_by=i.admin_reviewed_by, admin_reviewed_by_name=_reviewer_name(i.admin_reviewer),
-        admin_reviewed_at=i.admin_reviewed_at, rejection_reason=i.rejection_reason,
+        accounts_reviewed_at=i.accounts_reviewed_at, rejection_reason=i.rejection_reason,
         expense_id=i.expense_id, expense_number=i.expense.expense_number if i.expense else None,
+        invoice_id=i.invoice_id, invoice_number=i.invoice.invoice_number if i.invoice else None,
         generated_at=i.generated_at,
     )
 
@@ -204,12 +204,7 @@ def list_pending_instances(db: Session = Depends(get_db), user: User = Depends(g
     db.commit()
     q = db.query(RecurringExpenseInstance).join(RecurringExpense)
     q = _restrict_to_accounts_projects(q, user, RecurringExpense.project_id)
-    if user.role.name == RoleName.ACCOUNTS:
-        q = q.filter(RecurringExpenseInstance.status == RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW)
-    else:
-        q = q.filter(RecurringExpenseInstance.status.in_(
-            [RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW, RecurringInstanceStatus.PENDING_ADMIN_APPROVAL]
-        ))
+    q = q.filter(RecurringExpenseInstance.status == RecurringInstanceStatus.PENDING_ACCOUNTS_REVIEW)
     rows = q.order_by(RecurringExpenseInstance.occurrence_date).all()
     return [_instance_to_out(i) for i in rows]
 
@@ -234,18 +229,10 @@ def review_instance(instance_id: int, payload: InstanceReviewRequest, db: Sessio
     if not instance:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
     _authorize_template_access(instance.recurring_expense, user)
-    recurring_expense_service.accounts_review(db, instance, user, payload.amount, payload.bill_number, payload.description, payload.remarks)
-    db.commit()
-    db.refresh(instance)
-    return _instance_to_out(instance)
-
-
-@router.post("/instances/{instance_id}/admin-approve", response_model=RecurringExpenseInstanceOut, dependencies=[Depends(require_admin)])
-def approve_instance(instance_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    instance = db.query(RecurringExpenseInstance).filter(RecurringExpenseInstance.id == instance_id).first()
-    if not instance:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
-    recurring_expense_service.admin_approve(db, instance, user)
+    recurring_expense_service.accounts_review(
+        db, instance, user, payload.amount, payload.bill_number, payload.description, payload.remarks,
+        payload.cgst, payload.sgst, payload.igst, payload.other_tax,
+    )
     db.commit()
     db.refresh(instance)
     return _instance_to_out(instance)
