@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.session import get_db
-from app.models.models import Document, User, Project, Expense, Invoice, Payment, EmployeeClaim, EmployeeClaimLine
+from app.models.models import Document, User, Project, Expense, Invoice, Payment, EmployeeClaim, EmployeeClaimLine, Quotation, ReceivableInvoice
 from app.models.enums import DocumentType, ClaimStatus, RoleName, EditableEntityType
 from app.schemas.transactions import DocumentOut
 from app.services import edit_request_service
@@ -28,6 +28,8 @@ def _category_folder(document_type: str) -> str:
         DocumentType.PAYMENT: settings.DOCUMENT_FOLDER_PAYMENT,
         DocumentType.CLAIM: settings.DOCUMENT_FOLDER_CLAIM,
         DocumentType.CLAIM_LINE: settings.DOCUMENT_FOLDER_CLAIM,
+        DocumentType.QUOTATION: "receivables",
+        DocumentType.RECEIVABLE_INVOICE: "receivables",
     }.get(document_type, "misc")
 
 
@@ -64,13 +66,18 @@ async def upload_document(
     claim_line_id: int | None = Form(None),
     invoice_id: int | None = Form(None),
     payment_id: int | None = Form(None),
+    quotation_id: int | None = Form(None),
+    receivable_invoice_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if document_type not in (DocumentType.EXPENSE, DocumentType.INVOICE, DocumentType.CLAIM, DocumentType.CLAIM_LINE, DocumentType.PAYMENT):
+    if document_type not in (
+        DocumentType.EXPENSE, DocumentType.INVOICE, DocumentType.CLAIM, DocumentType.CLAIM_LINE, DocumentType.PAYMENT,
+        DocumentType.QUOTATION, DocumentType.RECEIVABLE_INVOICE,
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid document_type")
-    if not any([expense_id, claim_id, claim_line_id, invoice_id, payment_id]):
+    if not any([expense_id, claim_id, claim_line_id, invoice_id, payment_id, quotation_id, receivable_invoice_id]):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Document must be linked to at least one entity")
     _authorize_claim_document_change(db, user, claim_id, claim_line_id)
 
@@ -98,7 +105,15 @@ async def upload_document(
             claim = db.query(EmployeeClaim).filter(EmployeeClaim.id == claim_line.claim_id).first()
             if claim:
                 project_id = claim.project_id
-    
+    elif quotation_id:
+        quotation = db.query(Quotation).filter(Quotation.id == quotation_id).first()
+        if quotation:
+            project_id = quotation.project_id
+    elif receivable_invoice_id:
+        receivable_invoice = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == receivable_invoice_id).first()
+        if receivable_invoice:
+            project_id = receivable_invoice.project_id
+
     # Get project code if project exists
     if project_id:
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -114,7 +129,8 @@ async def upload_document(
     meta = await save_upload(db, file, uploaded_by=user.id, project_code=project_code, category=category, subdir_override=subdir_override)
     doc = Document(
         expense_id=expense_id, claim_id=claim_id, claim_line_id=claim_line_id, invoice_id=invoice_id,
-        payment_id=payment_id, document_type=document_type, uploaded_by=user.id, **meta,
+        payment_id=payment_id, quotation_id=quotation_id, receivable_invoice_id=receivable_invoice_id,
+        document_type=document_type, uploaded_by=user.id, **meta,
     )
     db.add(doc)
     db.commit()
@@ -127,6 +143,7 @@ def list_by_entity(
     db: Session = Depends(get_db), _=Depends(get_current_user),
     expense_id: int | None = None, claim_id: int | None = None, claim_line_id: int | None = None,
     invoice_id: int | None = None, payment_id: int | None = None,
+    quotation_id: int | None = None, receivable_invoice_id: int | None = None,
 ):
     q = db.query(Document)
     if expense_id:
@@ -139,6 +156,10 @@ def list_by_entity(
         q = q.filter(Document.invoice_id == invoice_id)
     if payment_id:
         q = q.filter(Document.payment_id == payment_id)
+    if quotation_id:
+        q = q.filter(Document.quotation_id == quotation_id)
+    if receivable_invoice_id:
+        q = q.filter(Document.receivable_invoice_id == receivable_invoice_id)
     return q.order_by(Document.id.desc()).all()
 
 
@@ -175,7 +196,13 @@ def delete_document(document_id: int, db: Session = Depends(get_db), user: User 
         _authorize_claim_document_change(db, user, doc.claim_id, doc.claim_line_id)
     elif user.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
         pass
-    elif user.role.name == RoleName.ACCOUNTS:
+    elif doc.quotation_id or doc.receivable_invoice_id:
+        # Receivables attachments follow the same access boundary as the
+        # Receivables module itself - ordinary ACCOUNTS has no access there,
+        # only SUPER_ACCOUNTS (plus Admin/Super Admin, handled above).
+        if user.role.name != RoleName.SUPER_ACCOUNTS:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to delete this attachment")
+    elif user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         parent_type, parent = _resolve_attachment_parent(db, doc)
         if parent_type and edit_request_service.is_locked_for_accounts(parent_type, parent):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This record has been verified by Admin - the attachment can no longer be deleted")

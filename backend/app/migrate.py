@@ -128,7 +128,27 @@ def migrate(target_engine: Engine = None, verbose: bool = True) -> dict:
             if result.rowcount:
                 summary["source_type_renamed"] = result.rowcount
 
+    # 5. One-off data backfill: ensure every RoleName.ALL value has a row in
+    # the roles table. Role is DB data, not a schema column, so a brand-new
+    # role (e.g. SUPER_ACCOUNTS) added to the enum never appears on an
+    # existing database via the schema diff above - it has to be inserted
+    # here instead. Idempotent (only inserts names that don't already exist).
+    if "roles" in existing_tables:
+        from app.models.enums import RoleName
+        with target_engine.begin() as conn:
+            existing_role_names = {row[0] for row in conn.execute(text("SELECT name FROM roles"))}
+            missing = [r for r in RoleName.ALL if r not in existing_role_names]
+            for name in missing:
+                conn.execute(
+                    text("INSERT INTO roles (name, description, created_at) VALUES (:n, :d, CURRENT_TIMESTAMP)"),
+                    {"n": name, "d": f"{name.title()} role"},
+                )
+            if missing:
+                summary["roles_created"] = missing
+
     if verbose:
+        if summary.get("roles_created"):
+            print(f"Created {len(summary['roles_created'])} new role(s): {', '.join(summary['roles_created'])}")
         if summary.get("source_type_renamed"):
             print(f"Renamed source_type on {summary['source_type_renamed']} expense row(s): DIRECT_EXPENSE -> EXPENSE.")
         if summary.get("employee_projects_backfilled"):

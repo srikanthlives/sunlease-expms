@@ -76,6 +76,15 @@ try:
         gen_project.accounts_approver_id = accounts_user.id
         db.add(gen_project)
 
+    # Super Accounts - everything ACCOUNTS can do, plus exclusive access to
+    # the Receivables module (Quotations, Receivable Invoices, Receivable
+    # Payments). Not project-restricted like ACCOUNTS (see core/deps.py).
+    if not db.query(User).filter(User.username == "superaccounts").first():
+        db.add(User(
+            username="superaccounts", full_name="Super Accounts User",
+            hashed_password=hash_password("SuperAcc@123"), role_id=role_map[RoleName.SUPER_ACCOUNTS].id,
+        ))
+
     # ACCOUNTS is now always project-restricted (see project_accounts_users) -
     # without this, a fresh seed would leave the "accounts" user with zero
     # assigned projects and every expense/invoice/payment/claim list would
@@ -127,6 +136,7 @@ try:
     print("  superadmin / SuperAdmin@123 (SUPER_ADMIN)")
     print("  admin / Admin@123           (ADMIN)")
     print("  accounts / Accounts@123     (ACCOUNTS - assigned as GEN project's claim approver)")
+    print("  superaccounts / SuperAcc@123 (SUPER_ACCOUNTS - Accounts plus Receivables)")
     print("  manager / Manager@123       (MANAGER - Priya Sharma, manages Ajai)")
     print("  ajai / Employee@123         (EMPLOYEE - Ajai Kumar, reports to Priya)")
 finally:

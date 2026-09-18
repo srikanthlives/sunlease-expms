@@ -9,6 +9,6 @@ export default function Dashboard() {
 
   if (user?.role === "EMPLOYEE") return <EmployeeDashboard />;
   if (user?.role === "MANAGER") return <ManagerDashboard />;
-  if (user?.role === "ACCOUNTS") return <AccountsDashboard />;
+  if (user?.role === "ACCOUNTS" || user?.role === "SUPER_ACCOUNTS") return <AccountsDashboard />;
   return <FinancialDashboard />;
 }

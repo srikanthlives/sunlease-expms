@@ -12,9 +12,10 @@ from app.services import edit_request_service
 
 router = APIRouter(prefix="/api/v1/edit-requests", tags=["edit-requests"])
 
-# Only Accounts proposes edits through this queue - Admin/Super Admin edit
-# the entities directly via PUT /expenses|invoices|payments/{id} instead.
-require_requester = require_roles(RoleName.ACCOUNTS)
+# Only Accounts (or Super Accounts, which is Accounts-plus) proposes edits
+# through this queue - Admin/Super Admin edit the entities directly via
+# PUT /expenses|invoices|payments/{id} instead.
+require_requester = require_roles(RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS)
 
 
 def _to_out(req: EditRequest) -> EditRequestOut:
@@ -45,7 +46,7 @@ def list_edit_requests(
     q = db.query(EditRequest)
     # Accounts only ever sees their own requests (pending + their history).
     # Admin/Super Admin see everything - that's the review queue + full history.
-    if user.role.name == RoleName.ACCOUNTS or mine:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS) or mine:
         q = q.filter(EditRequest.requested_by == user.id)
     elif user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to edit requests")

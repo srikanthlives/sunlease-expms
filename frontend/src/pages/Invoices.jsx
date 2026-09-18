@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -17,6 +17,7 @@ const PAGE_SIZES = [25, 50, 100];
 // here so they're always rendered regardless of what's hidden.
 const TOGGLEABLE_COLUMNS = [
   { key: "vendor_id", label: "Vendor" },
+  { key: "po_number", label: "PO Number" },
   { key: "due_date", label: "Due Date" },
   { key: "project_id", label: "Project" },
   { key: "category_id", label: "Head" },
@@ -83,8 +84,8 @@ export default function Invoices() {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
   });
   const [exporting, setExporting] = useState(false);
-  const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
-  const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
+  const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"].includes(user?.role);
+  const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
 
   async function toggleVerify(r) {
@@ -231,6 +232,10 @@ export default function Invoices() {
               key: "vendor_id", header: "Vendor", sortable: true,
               render: (r) => { const text = vendorName(r.vendor_id); return <span title={text} className="block max-w-[200px] truncate">{text}</span>; },
             },
+            {
+              key: "po_number", header: "PO Number",
+              render: (r) => { const text = r.po_number || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
+            },
             { key: "invoice_date", header: "Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
             { key: "due_date", header: "Due Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
             {
@@ -334,7 +339,7 @@ export default function Invoices() {
 
 function InvoiceForm({ masters, onClose, onCreated }) {
   const [form, setForm] = useState({
-    invoice_number: "", vendor_id: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "",
+    invoice_number: "", po_number: "", vendor_id: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "",
     project_id: "", category_id: "", sub_category_id: "", description: "",
     taxable_amount: "", cgst: "0", sgst: "0", igst: "0", other_tax: "0",
     pay_immediately: false, payment_date: new Date().toISOString().slice(0, 10),
@@ -362,6 +367,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
       await client.post("/invoices", {
         ...form,
         vendor_id: Number(form.vendor_id),
+        po_number: form.po_number || null,
         project_id: form.project_id || null,
         due_date: form.due_date || null,
         category_id: Number(form.category_id),
@@ -401,6 +407,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
           </Select>
           <SubCategorySelect categoryId={form.category_id} value={form.sub_category_id} onChange={(v) => set("sub_category_id", v)} />
         </div>
+        <Textarea label="PO Number(s)" value={form.po_number} onChange={(e) => set("po_number", e.target.value)} rows={2} placeholder="One or more PO numbers, e.g. one per line" />
         <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
         <div className="grid grid-cols-4 gap-4">
           <Input label="Taxable Amount" type="number" step="0.01" value={form.taxable_amount} onChange={(e) => set("taxable_amount", e.target.value)} required />

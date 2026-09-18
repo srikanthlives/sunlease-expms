@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1", tags=["dashboard-reports"])
 # Company-wide financial dashboard/reports are for Admin/Super Admin/Accounts/
 # Viewer only. Employees see /dashboard/my-claims; Managers see
 # /dashboard/approvals - neither has a reason to see company-wide totals.
-require_report_viewer = require_roles(RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.VIEWER)
+require_report_viewer = require_roles(RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS, RoleName.VIEWER)
 
 
 def _d(v):
@@ -26,7 +26,7 @@ def _d(v):
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db), user: User = Depends(get_current_user), project_id: int | None = None):
-    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.VIEWER):
+    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS, RoleName.VIEWER):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account uses a role-specific dashboard instead")
 
     project = None

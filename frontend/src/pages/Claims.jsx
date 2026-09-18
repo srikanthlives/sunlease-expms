@@ -277,7 +277,7 @@ export function ClaimDetail() {
   const canApprove =
     isPrivileged ||
     (user?.role === "MANAGER" && claim.status === "SUBMITTED") ||
-    (user?.role === "ACCOUNTS" && claim.status === "PENDING_ACCOUNTS_APPROVAL");
+    (["ACCOUNTS", "SUPER_ACCOUNTS"].includes(user?.role) && claim.status === "PENDING_ACCOUNTS_APPROVAL");
   const canAct = canApprove && ["SUBMITTED", "PENDING_ACCOUNTS_APPROVAL"].includes(claim.status);
   const stageLabel = claim.status === "SUBMITTED"
     ? "Awaiting the employee's manager"

@@ -81,8 +81,8 @@ export default function Payments() {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
   });
   const [exporting, setExporting] = useState(false);
-  const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
-  const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
+  const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"].includes(user?.role);
+  const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
 
   function toggleColumn(key) {

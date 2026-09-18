@@ -77,6 +77,7 @@ class CancelRequest(BaseModel):
 
 class InvoiceCreate(BaseModel):
     invoice_number: str
+    po_number: str | None = None
     vendor_id: int
     invoice_date: dt.date
     due_date: dt.date | None = None
@@ -101,6 +102,7 @@ class InvoiceCreate(BaseModel):
 class InvoiceOut(BaseModel):
     id: int
     invoice_number: str
+    po_number: str | None = None
     vendor_id: int
     invoice_date: dt.date
     due_date: dt.date | None = None
@@ -262,6 +264,8 @@ class DocumentOut(BaseModel):
     claim_line_id: int | None = None
     invoice_id: int | None = None
     payment_id: int | None = None
+    quotation_id: int | None = None
+    receivable_invoice_id: int | None = None
 
     class Config:
         from_attributes = True

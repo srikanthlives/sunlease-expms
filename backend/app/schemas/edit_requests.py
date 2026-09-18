@@ -27,6 +27,7 @@ class ExpenseUpdate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     invoice_number: str | None = None
+    po_number: str | None = None
     vendor_id: int | None = None
     invoice_date: dt.date | None = None
     due_date: dt.date | None = None

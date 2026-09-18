@@ -79,7 +79,7 @@ def assign_project_approver(project_id: int, payload: AssignApproverRequest, db:
         user = db.query(User).filter(User.id == payload.user_id).first()
         if not user:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "User not found")
-        if user.role.name not in (RoleName.ACCOUNTS, RoleName.ADMIN, RoleName.SUPER_ADMIN):
+        if user.role.name not in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS, RoleName.ADMIN, RoleName.SUPER_ADMIN):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "The approver must have the Accounts, Admin, or Super Admin role")
     project.accounts_approver_id = payload.user_id
     db.add(project)
@@ -103,7 +103,7 @@ def assign_project_accounts_users(project_id: int, payload: AssignAccountsUsersR
         if len(users) != len(user_ids):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "One or more users not found")
         for u in users:
-            if u.role.name not in (RoleName.ACCOUNTS, RoleName.ADMIN, RoleName.SUPER_ADMIN):
+            if u.role.name not in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS, RoleName.ADMIN, RoleName.SUPER_ADMIN):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Assigned users must have the Accounts, Admin, or Super Admin role")
     db.query(ProjectAccountsUser).filter(ProjectAccountsUser.project_id == project_id).delete()
     for uid in user_ids:
@@ -155,7 +155,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db), user: User = D
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Employee not found")
     out = EmployeeDetailOut.model_validate(e)
-    if user.role.name not in (RoleName.ADMIN, RoleName.SUPER_ADMIN, RoleName.ACCOUNTS):
+    if user.role.name not in (RoleName.ADMIN, RoleName.SUPER_ADMIN, RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         out.bank_name = None
         out.account_number = None
         out.ifsc = None

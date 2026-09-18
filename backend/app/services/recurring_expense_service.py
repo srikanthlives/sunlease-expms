@@ -65,7 +65,7 @@ def generate_due_instances(db: Session) -> list[RecurringExpenseInstance]:
 
 
 def _assert_accounts_reviewer(user: User):
-    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS):
+    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized to review this instance")
 
 

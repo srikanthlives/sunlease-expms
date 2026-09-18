@@ -2,7 +2,7 @@ import { useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Button, Input, Select, vendorLabel } from "./ui";
+import { Card, Button, Input, Textarea, Select, vendorLabel } from "./ui";
 import { X, CheckCircle2 } from "lucide-react";
 
 const FIELD_SETS = {
@@ -20,6 +20,7 @@ const FIELD_SETS = {
   ],
   INVOICE: (masters) => [
     { key: "invoice_number", label: "Invoice Number", type: "text" },
+    { key: "po_number", label: "PO Number(s)", type: "textarea", hint: "One or more PO numbers, e.g. one per line." },
     { key: "vendor_id", label: "Vendor", type: "select", options: masters.vendors, optionLabel: vendorLabel },
     { key: "invoice_date", label: "Invoice Date", type: "date" },
     { key: "due_date", label: "Due Date", type: "date" },
@@ -147,7 +148,7 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
         <form onSubmit={submit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             {fields.map((f) => (
-              <div key={f.key}>
+              <div key={f.key} className={f.type === "textarea" ? "col-span-2" : undefined}>
                 {f.type === "select" ? (
                   <Select label={f.label} value={form[f.key] || ""} onChange={(e) => set(f.key, e.target.value)} disabled={f.dependsOn && !form[f.dependsOn]}>
                     <option value="">— none —</option>
@@ -157,6 +158,8 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
                       </option>
                     ))}
                   </Select>
+                ) : f.type === "textarea" ? (
+                  <Textarea label={f.label} value={form[f.key] || ""} onChange={(e) => set(f.key, e.target.value)} />
                 ) : (
                   <Input
                     label={f.label} type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}

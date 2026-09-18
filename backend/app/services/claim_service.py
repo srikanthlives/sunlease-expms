@@ -152,7 +152,7 @@ def _authorize_accounts_approval(db: Session, claim: EmployeeClaim, actor: User)
     original any-Accounts-user fallback, since there's no project to scope by."""
     if actor.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
         return
-    if actor.role.name != RoleName.ACCOUNTS:
+    if actor.role.name not in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only Accounts can give final approval on this claim")
     project = claim.project
     if project is None:

@@ -36,6 +36,9 @@ const STATUS_STYLES = {
   CANCELLED: "bg-danger/10 text-danger border-danger/30",
   ACTIVE: "bg-ok/10 text-ok border-ok/30",
   RECORDED: "bg-ok/10 text-ok border-ok/30",
+  SENT: "bg-brand-500/10 text-brand-700 border-brand-500/30",
+  ACCEPTED: "bg-ok/10 text-ok border-ok/30",
+  CONVERTED: "bg-ok/10 text-ok border-ok/30",
 };
 
 export function StatusBadge({ status }) {
@@ -112,6 +115,20 @@ export function Input({ label, error, className = "", type, onChange, uppercase,
         type={type}
         className={`w-full rounded-md border border-ink/15 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none ${shouldUppercase ? "uppercase" : ""} ${className}`}
         onChange={handleChange}
+        {...props}
+      />
+      {error && <span className="text-xs text-danger mt-1 block">{error}</span>}
+    </label>
+  );
+}
+
+export function Textarea({ label, error, className = "", rows = 3, ...props }) {
+  return (
+    <label className="block">
+      {label && <span className="block text-xs font-medium text-ink/60 mb-1">{label}</span>}
+      <textarea
+        rows={rows}
+        className={`w-full rounded-md border border-ink/15 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none resize-y ${className}`}
         {...props}
       />
       {error && <span className="text-xs text-danger mt-1 block">{error}</span>}

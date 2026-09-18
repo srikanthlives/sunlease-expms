@@ -9,7 +9,7 @@ from app.services import expense_service, audit_service, document_service
 
 
 def create_invoice(
-    db: Session, *, invoice_number, vendor_id, invoice_date, due_date, project_id, description,
+    db: Session, *, invoice_number, po_number=None, vendor_id, invoice_date, due_date, project_id, description,
     taxable_amount: Decimal, cgst: Decimal, sgst: Decimal, igst: Decimal, other_tax: Decimal,
     category_id, sub_category_id, created_by: int, pay_immediately: bool = False,
     payment_date=None, account_id=None, payment_mode=None, reference_number=None, remarks=None,
@@ -29,7 +29,7 @@ def create_invoice(
     )
 
     invoice = Invoice(
-        invoice_number=invoice_number, vendor_id=vendor_id, invoice_date=invoice_date, due_date=due_date,
+        invoice_number=invoice_number, po_number=po_number, vendor_id=vendor_id, invoice_date=invoice_date, due_date=due_date,
         project_id=project_id, description=description, taxable_amount=taxable_amount, cgst=cgst, sgst=sgst,
         igst=igst, other_tax=other_tax, total_amount=total, status="RECORDED", expense_id=expense.id,
         created_by=created_by,

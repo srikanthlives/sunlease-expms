@@ -467,7 +467,7 @@ export function ProjectsMaster() {
 
   function load() {
     client.get("/projects").then((res) => setProjects(res.data));
-    client.get("/auth/users").then((res) => setAccountsUsers(res.data.filter((u) => ["ACCOUNTS", "ADMIN", "SUPER_ADMIN"].includes(u.role))));
+    client.get("/auth/users").then((res) => setAccountsUsers(res.data.filter((u) => ["ACCOUNTS", "SUPER_ACCOUNTS", "ADMIN", "SUPER_ADMIN"].includes(u.role))));
   }
   useEffect(load, []);
 

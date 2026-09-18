@@ -37,6 +37,15 @@ try:
             hashed_password=hash_password("Admin@123"), role_id=role_map[RoleName.ADMIN].id,
         ))
 
+    # Super Accounts - everything ACCOUNTS can do, plus exclusive access to
+    # the Receivables module (Quotations, Receivable Invoices, Receivable
+    # Payments). Not project-restricted like ACCOUNTS (see core/deps.py).
+    if not db.query(User).filter(User.username == "superaccounts").first():
+        db.add(User(
+            username="superaccounts", full_name="Super Accounts User",
+            hashed_password=hash_password("SuperAcc@123"), role_id=role_map[RoleName.SUPER_ACCOUNTS].id,
+        ))
+
     # Sample project
     if not db.query(Project).filter(Project.code == "GEN").first():
         db.add(Project(code="GEN", name="General / Head Office"))
@@ -55,5 +64,6 @@ try:
     print("Login credentials:")
     print("  superadmin / SuperAdmin@123 (SUPER_ADMIN)")
     print("  admin / Admin@123           (ADMIN)")
+    print("  superaccounts / SuperAcc@123 (SUPER_ACCOUNTS - Accounts plus Receivables)")
 finally:
     db.close()

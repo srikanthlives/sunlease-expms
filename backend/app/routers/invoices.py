@@ -101,7 +101,7 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: 
     if user.role.name == RoleName.ACCOUNTS:
         project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     invoice = invoice_service.create_invoice(
-        db, invoice_number=payload.invoice_number, vendor_id=payload.vendor_id, invoice_date=payload.invoice_date,
+        db, invoice_number=payload.invoice_number, po_number=payload.po_number, vendor_id=payload.vendor_id, invoice_date=payload.invoice_date,
         due_date=payload.due_date, project_id=payload.project_id, description=payload.description,
         taxable_amount=payload.taxable_amount, cgst=payload.cgst, sgst=payload.sgst, igst=payload.igst,
         other_tax=payload.other_tax, category_id=payload.category_id, sub_category_id=payload.sub_category_id,

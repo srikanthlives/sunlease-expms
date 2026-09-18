@@ -7,6 +7,7 @@ import Expenses from "./pages/Expenses";
 import Invoices from "./pages/Invoices";
 import Payments from "./pages/Payments";
 import { ClaimsList, ClaimDetail } from "./pages/Claims";
+import Receivables from "./pages/Receivables";
 import ReportsHub from "./pages/reports/ReportsHub";
 import DailyRegisterReport from "./pages/reports/DailyRegisterReport";
 import TrendReport from "./pages/reports/TrendReport";
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="payments" element={<Payments />} />
             <Route path="claims" element={<ClaimsList />} />
             <Route path="claims/:id" element={<ClaimDetail />} />
+            <Route path="receivables" element={<Receivables />} />
             <Route path="my-claims" element={<ClaimsList mineOnly />} />
             <Route path="approvals" element={<ClaimsList approvalsOnly />} />
             <Route path="reports" element={<ReportsHub />} />

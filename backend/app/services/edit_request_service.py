@@ -25,7 +25,7 @@ FIELD_TYPES = {
         "base_amount": "decimal", "gst_amount": "decimal", "other_amount": "decimal",
     },
     EditableEntityType.INVOICE: {
-        "invoice_number": "str", "vendor_id": "int", "invoice_date": "date", "due_date": "date",
+        "invoice_number": "str", "po_number": "str", "vendor_id": "int", "invoice_date": "date", "due_date": "date",
         "project_id": "int", "description": "str",
         "taxable_amount": "decimal", "cgst": "decimal", "sgst": "decimal", "igst": "decimal", "other_tax": "decimal",
         "category_id": "int", "sub_category_id": "int",
@@ -172,7 +172,7 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
             if dupe:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Another invoice with this number already exists for this vendor")
 
-        for field in ("invoice_number", "vendor_id", "invoice_date", "due_date", "project_id", "description"):
+        for field in ("invoice_number", "po_number", "vendor_id", "invoice_date", "due_date", "project_id", "description"):
             if field in changes:
                 value = _coerce(field_types[field], changes[field])
                 setattr(entity, field, value)

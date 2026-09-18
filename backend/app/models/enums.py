@@ -11,11 +11,17 @@ class RoleName:
     EMPLOYEE = "EMPLOYEE"
     MANAGER = "MANAGER"
     ACCOUNTS = "ACCOUNTS"
+    # Everything ACCOUNTS can do, plus exclusive access to the Receivables
+    # module (Quotations, Receivable Invoices, Receivable Payments) - see
+    # core/deps.py's require_accounts/require_receivables. A distinct role
+    # rather than a per-user flag so it stays visible/auditable in the Users
+    # Admin screen and the Role management UI like every other role.
+    SUPER_ACCOUNTS = "SUPER_ACCOUNTS"
     ADMIN = "ADMIN"
     VIEWER = "VIEWER"
     SUPER_ADMIN = "SUPER_ADMIN"
 
-    ALL = [EMPLOYEE, MANAGER, ACCOUNTS, ADMIN, VIEWER, SUPER_ADMIN]
+    ALL = [EMPLOYEE, MANAGER, ACCOUNTS, SUPER_ACCOUNTS, ADMIN, VIEWER, SUPER_ADMIN]
 
 
 class SourceType:
@@ -57,6 +63,8 @@ class DocumentType:
     CLAIM = "CLAIM"
     CLAIM_LINE = "CLAIM_LINE"
     PAYMENT = "PAYMENT"
+    QUOTATION = "QUOTATION"
+    RECEIVABLE_INVOICE = "RECEIVABLE_INVOICE"
 
 
 class ApprovalEntityType:
@@ -118,6 +126,19 @@ class RecurringPayeeType:
     VENDOR = "VENDOR"      # posts as an Invoice against the vendor
 
     ALL = [DIRECT, VENDOR]
+
+
+class QuotationStatus:
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    CONVERTED = "CONVERTED"  # accepted and turned into a ReceivableInvoice - terminal, like Invoice's RECORDED
+
+
+class ReceivableStatus:
+    ACTIVE = "ACTIVE"
+    CANCELLED = "CANCELLED"
 
 
 class RecurringInstanceStatus:

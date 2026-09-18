@@ -45,16 +45,26 @@ def require_roles(*role_names: str):
 # resets (see auth router).
 require_super_admin = require_roles("SUPER_ADMIN")
 require_admin = require_roles("SUPER_ADMIN", "ADMIN")
-require_accounts = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS")
+# SUPER_ACCOUNTS is a strict superset of ACCOUNTS (everything ACCOUNTS can
+# do, plus Receivables - see require_receivables below), so it's included
+# everywhere ACCOUNTS is.
+require_accounts = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS")
 require_manager = require_roles("SUPER_ADMIN", "ADMIN", "MANAGER")
 # Claim approve/reject: Manager (level 1, their own reports) and Accounts
 # (level 2, their assigned projects) both call the same endpoints - the
 # service layer enforces exactly *which* claims each caller may act on.
-require_approver = require_roles("SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTS")
-require_any = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS", "MANAGER", "EMPLOYEE", "VIEWER")
+require_approver = require_roles("SUPER_ADMIN", "ADMIN", "MANAGER", "ACCOUNTS", "SUPER_ACCOUNTS")
+require_any = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS", "MANAGER", "EMPLOYEE", "VIEWER")
 # Company-wide transaction ledgers, dashboards and reports (expenses,
 # invoices, payments, financial reports) are for Admin/Super Admin/Accounts/
 # Viewer only. Employees only see their own claims; Managers only see their
 # team's approvals and their own claims - neither needs or should see
 # company-wide financial data.
-require_non_employee = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS", "VIEWER")
+require_non_employee = require_roles("SUPER_ADMIN", "ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS", "VIEWER")
+# Receivables (Quotations, Receivable Invoices, Receivable Payments) -
+# ordinary ACCOUNTS does NOT get this; only SUPER_ACCOUNTS (plus Admin/Super
+# Admin, who have universal access everywhere) may create/edit them.
+require_receivables = require_roles("SUPER_ADMIN", "ADMIN", "SUPER_ACCOUNTS")
+# Read-only visibility into Receivables additionally includes VIEWER, same
+# pattern as require_non_employee for the payable side.
+require_receivables_view = require_roles("SUPER_ADMIN", "ADMIN", "SUPER_ACCOUNTS", "VIEWER")

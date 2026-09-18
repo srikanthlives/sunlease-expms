@@ -73,6 +73,7 @@ Seeded logins (username / password):
 | Super Admin | `superadmin` | `SuperAdmin@123`  |
 | Admin       | `admin`      | `Admin@123`       |
 | Accounts    | `accounts`   | `Accounts@123`    |
+| Super Accounts | `superaccounts` | `SuperAcc@123` |
 | Manager     | `manager`    | `Manager@123`     |
 | Employee    | `ajai`       | `Employee@123`    |
 
@@ -81,6 +82,10 @@ exclusive powers: creating new roles, and resetting any user's password.
 An ordinary Admin can create/disable users but cannot grant the Super Admin
 role to anyone, cannot reset passwords, and cannot disable another Admin or
 Super Admin account (guards against privilege escalation).
+
+Super Accounts is a superset of Accounts everywhere Accounts has access,
+plus exclusive access to the Receivables module (Quotations, Receivable
+Invoices, Receivable Payments) - see `Receivables` in the sidebar.
 
 ### 2. Frontend
 

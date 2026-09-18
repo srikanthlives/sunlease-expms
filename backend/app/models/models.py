@@ -300,6 +300,7 @@ class Invoice(Base):
 
     id = Column(Integer, primary_key=True)
     invoice_number = Column(String(100), nullable=False)
+    po_number = Column(Text, nullable=True)  # vendor's Purchase Order number(s) - free text, can list more than one
     vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False)
     invoice_date = Column(Date, nullable=False)
     due_date = Column(Date, nullable=True)
@@ -445,6 +446,8 @@ class Document(Base):
     claim_line_id = Column(Integer, ForeignKey("employee_claim_lines.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
     payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True)
+    quotation_id = Column(Integer, ForeignKey("quotations.id"), nullable=True)
+    receivable_invoice_id = Column(Integer, ForeignKey("receivable_invoices.id"), nullable=True)
 
     document_type = Column(String(30), nullable=False)  # DocumentType
     original_filename = Column(String(500), nullable=False)
@@ -641,3 +644,125 @@ class EditRequest(Base):
 
     requester = relationship("User", foreign_keys=[requested_by])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+
+
+# ---------------------------------------------------------------------------
+# Receivables - the mirror image of Invoice/Payment (money owed TO the
+# company, not by it). Kept as separate tables rather than reusing
+# Invoice/Payment/PaymentAllocation, since a receivable has no vendor_id, no
+# linked Expense, and a different lifecycle (Quotation -> Invoice). Managed
+# exclusively by SUPER_ACCOUNTS (plus Admin/Super Admin) - see
+# core/deps.py::require_receivables.
+# ---------------------------------------------------------------------------
+
+class Quotation(Base):
+    """A price quote sent to a customer, before any money is owed. Tracked
+    through DRAFT -> SENT -> ACCEPTED/REJECTED; an ACCEPTED quotation is
+    converted into a ReceivableInvoice (see receivable_service.convert_
+    quotation), at which point it becomes CONVERTED - terminal, like how a
+    RecurringExpenseInstance becomes APPROVED."""
+
+    __tablename__ = "quotations"
+
+    id = Column(Integer, primary_key=True)
+    quotation_number = Column(String(50), unique=True, nullable=False, index=True)
+    customer_name = Column(String(255), nullable=False)  # free-text, no Customer master (see CLAUDE.md)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    quotation_date = Column(Date, nullable=False)
+    valid_until = Column(Date, nullable=True)
+    description = Column(Text)
+
+    taxable_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    cgst = Column(Numeric(14, 2), nullable=False, default=0)
+    sgst = Column(Numeric(14, 2), nullable=False, default=0)
+    igst = Column(Numeric(14, 2), nullable=False, default=0)
+    other_tax = Column(Numeric(14, 2), nullable=False, default=0)
+    total_amount = Column(Numeric(14, 2), nullable=False, default=0)
+
+    status = Column(String(20), default="DRAFT")  # QuotationStatus
+    rejection_reason = Column(Text, nullable=True)
+    receivable_invoice_id = Column(Integer, ForeignKey("receivable_invoices.id"), nullable=True)  # set once converted
+
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    receivable_invoice = relationship("ReceivableInvoice", foreign_keys=[receivable_invoice_id])
+    project = relationship("Project", foreign_keys=[project_id])
+
+
+class ReceivableInvoice(Base):
+    """An invoice issued TO a customer - the receivable itself. payment_status
+    is never set directly, always recomputed from ReceivablePaymentAllocation
+    rows via receivable_service.recalculate_receivable_payment_status,
+    mirroring Expense.payment_status's rule (see CLAUDE.md)."""
+
+    __tablename__ = "receivable_invoices"
+
+    id = Column(Integer, primary_key=True)
+    invoice_number = Column(String(50), unique=True, nullable=False, index=True)
+    customer_name = Column(String(255), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    invoice_date = Column(Date, nullable=False)
+    due_date = Column(Date, nullable=True)
+    quotation_id = Column(Integer, ForeignKey("quotations.id"), nullable=True)  # set if this came from a converted quotation
+    po_number = Column(Text, nullable=True)  # customer's Purchase Order number(s), if any - free text, can list more than one
+    description = Column(Text)
+
+    taxable_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    cgst = Column(Numeric(14, 2), nullable=False, default=0)
+    sgst = Column(Numeric(14, 2), nullable=False, default=0)
+    igst = Column(Numeric(14, 2), nullable=False, default=0)
+    other_tax = Column(Numeric(14, 2), nullable=False, default=0)
+    total_amount = Column(Numeric(14, 2), nullable=False, default=0)
+
+    status = Column(String(20), default="ACTIVE")  # ReceivableStatus - cancelled, never deleted (see CLAUDE.md)
+    payment_status = Column(String(20), default="UNPAID")  # PaymentStatus
+
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    quotation = relationship("Quotation", foreign_keys=[quotation_id])
+    project = relationship("Project", foreign_keys=[project_id])
+
+
+class ReceivablePayment(Base):
+    """Money actually received from a customer, into one of our own Accounts
+    (bank/cash) - the mirror of Payment, but incoming rather than outgoing."""
+
+    __tablename__ = "receivable_payments"
+
+    id = Column(Integer, primary_key=True)
+    payment_number = Column(String(50), unique=True, nullable=False, index=True)
+    payment_date = Column(Date, nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)  # which of our accounts received the money
+    payment_mode = Column(String(30), nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    reference_number = Column(String(150))
+    remarks = Column(Text)
+    is_cancelled = Column(Boolean, default=False)
+
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime, default=now, onupdate=now)
+
+    account = relationship("Account", foreign_keys=[account_id])
+    allocations = relationship("ReceivablePaymentAllocation", back_populates="payment", cascade="all, delete-orphan")
+
+
+class ReceivablePaymentAllocation(Base):
+    """How much of a ReceivablePayment was applied against which
+    ReceivableInvoice - mirrors PaymentAllocation. A single receipt can
+    settle several invoices at once, same as an outgoing Payment can."""
+
+    __tablename__ = "receivable_payment_allocations"
+
+    id = Column(Integer, primary_key=True)
+    receivable_payment_id = Column(Integer, ForeignKey("receivable_payments.id"), nullable=False)
+    receivable_invoice_id = Column(Integer, ForeignKey("receivable_invoices.id"), nullable=False)
+    allocated_amount = Column(Numeric(14, 2), nullable=False)
+    created_at = Column(DateTime, default=now)
+
+    payment = relationship("ReceivablePayment", back_populates="allocations")
+    invoice = relationship("ReceivableInvoice", foreign_keys=[receivable_invoice_id])

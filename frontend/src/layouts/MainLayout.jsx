@@ -6,7 +6,7 @@ import logoIcon from "../assets/logo_icon.png";
 import {
   LayoutDashboard, Receipt, FileText, Wallet, ClipboardList, CheckSquare,
   BarChart3, Users, Building2, Landmark, Tag, Tags, ShieldCheck, LogOut, ScrollText, UserCog, FileEdit,
-  ChevronsLeft, ChevronsRight, Repeat, UploadCloud,
+  ChevronsLeft, ChevronsRight, Repeat, UploadCloud, FileStack,
 } from "lucide-react";
 
 const COLLAPSE_KEY = "expms_sidebar_collapsed";
@@ -15,15 +15,20 @@ const NAV = [
   { section: "", items: [{ to: "/", label: "Dashboard", icon: LayoutDashboard }] },
   {
     section: "Transactions",
-    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "VIEWER"],
+    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS", "VIEWER"],
     items: [
       { to: "/expenses", label: "Expenses", icon: Receipt },
       { to: "/invoices", label: "Invoices", icon: FileText },
       { to: "/payments", label: "Payments", icon: Wallet },
       { to: "/claims", label: "Employee Claims", icon: ClipboardList },
       { to: "/recurring-expenses", label: "Recurring Expenses", icon: Repeat },
-      { to: "/bulk-import", label: "Bulk Import", icon: UploadCloud, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"] },
+      { to: "/bulk-import", label: "Bulk Import", icon: UploadCloud, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"] },
     ],
+  },
+  {
+    section: "Receivables",
+    roles: ["ADMIN", "SUPER_ADMIN", "SUPER_ACCOUNTS", "VIEWER"],
+    items: [{ to: "/receivables", label: "Quotations & Invoices", icon: FileStack }],
   },
   {
     section: "My Work",
@@ -32,20 +37,20 @@ const NAV = [
   },
   {
     section: "Approvals",
-    roles: ["ADMIN", "SUPER_ADMIN", "MANAGER", "ACCOUNTS"],
+    roles: ["ADMIN", "SUPER_ADMIN", "MANAGER", "ACCOUNTS", "SUPER_ACCOUNTS"],
     items: [
       { to: "/approvals", label: "Claim Approvals", icon: CheckSquare },
-      { to: "/recurring-expenses/approvals", label: "Recurring Expense Approvals", icon: Repeat, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"] },
+      { to: "/recurring-expenses/approvals", label: "Recurring Expense Approvals", icon: Repeat, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"] },
     ],
   },
   {
     section: "Edit Requests",
-    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"],
+    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"],
     items: [{ to: "/edit-requests", label: "Review & History", icon: FileEdit }],
   },
   {
     section: "Reports",
-    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "VIEWER"],
+    roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS", "VIEWER"],
     items: [{ to: "/reports", label: "Reports", icon: BarChart3 }],
   },
   {

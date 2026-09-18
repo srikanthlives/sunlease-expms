@@ -46,7 +46,7 @@ def _authorize_template_edit(tpl: RecurringExpense, user: User):
     the template freely until Admin/Super Admin verifies it, after which
     only Admin/Super Admin can change it directly."""
     _authorize_template_access(tpl, user)
-    if user.role.name == RoleName.ACCOUNTS and tpl.is_verified:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS) and tpl.is_verified:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This recurring expense has been verified by Admin and can no longer be edited directly")
 
 

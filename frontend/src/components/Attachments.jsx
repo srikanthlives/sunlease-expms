@@ -15,6 +15,7 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
  */
 export default function Attachments({
   documentType, expenseId, invoiceId, paymentId, claimId, claimLineId, claimFullId,
+  quotationId, receivableInvoiceId,
   label = "Attachments", compact = false, readOnly = false, canDelete = true,
 }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +29,10 @@ export default function Attachments({
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
 
-  const entityParams = { expense_id: expenseId, invoice_id: invoiceId, payment_id: paymentId, claim_id: claimId, claim_line_id: claimLineId };
+  const entityParams = {
+    expense_id: expenseId, invoice_id: invoiceId, payment_id: paymentId, claim_id: claimId, claim_line_id: claimLineId,
+    quotation_id: quotationId, receivable_invoice_id: receivableInvoiceId,
+  };
 
   function load() {
     setLoading(true);

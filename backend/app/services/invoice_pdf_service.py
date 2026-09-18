@@ -13,6 +13,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 # key -> (header label, relative column width unit)
 COLUMN_DEFS = {
     "invoice_number": ("Invoice #", 2.6),
+    "po_number": ("PO Number", 2.4),
     "vendor_id": ("Vendor", 3.2),
     "invoice_date": ("Date", 2.0),
     "due_date": ("Due Date", 2.0),
@@ -41,6 +42,8 @@ def _money(v) -> str:
 def _cell(key: str, inv, cell_style) -> str:
     if key == "invoice_number":
         return inv.invoice_number
+    if key == "po_number":
+        return Paragraph(inv.po_number or "-", cell_style)
     if key == "vendor_id":
         return Paragraph(inv.vendor.vendor_name if inv.vendor else "-", cell_style)
     if key == "invoice_date":
