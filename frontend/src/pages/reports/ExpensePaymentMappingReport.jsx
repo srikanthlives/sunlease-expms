@@ -4,37 +4,50 @@ import client from "../../api/client";
 import { useMasters } from "../../hooks/useMasters";
 import { Card, Select, StatusBadge, formatMoney, formatDate } from "../../components/ui";
 import DateRangePicker, { buildPresets } from "../../components/DateRangePicker";
-import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Wallet, Split } from "lucide-react";
+import Attachments from "../../components/Attachments";
+import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ChevronLeft, Wallet, Split } from "lucide-react";
 
 const SOURCE_TYPES = ["EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
+const PAGE_SIZES = [25, 50, 100];
+
+function expenseAttachmentsProps(row) {
+  if (row.source_type === "INVOICE") return { documentType: "INVOICE", invoiceId: row.source_id };
+  if (row.source_type === "EMPLOYEE_CLAIM") return { claimFullId: row.source_id };
+  return { documentType: "EXPENSE", expenseId: row.expense_id };
+}
 
 function ExpenseRow({ row, expanded, onToggle }) {
   const hasPayments = row.payments.length > 0;
   return (
     <div className="border-b border-ink/10 last:border-0">
-      <button
-        type="button"
-        onClick={() => hasPayments && onToggle(row.expense_id)}
-        className={`w-full flex items-center gap-3 px-3 py-3 text-left ${hasPayments ? "hover:bg-brand-50 cursor-pointer" : "cursor-default"}`}
-      >
-        <span className="w-4 shrink-0 text-ink/30">
-          {hasPayments ? (expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />) : null}
-        </span>
-        <span className="w-32 shrink-0 font-medium text-sm">{row.expense_number}</span>
-        <span className="w-24 shrink-0 text-xs text-ink/50 whitespace-nowrap">{formatDate(row.expense_date)}</span>
-        <span className="w-32 shrink-0 text-[11px] text-ink/40 uppercase whitespace-nowrap overflow-hidden text-ellipsis" title={row.source_type.replace(/_/g, " ")}>
-          {row.source_type.replace(/_/g, " ")}
-        </span>
-        <span className="flex-1 min-w-0 truncate text-sm" title={row.payee}>{row.payee}</span>
-        <span className="w-40 shrink-0 truncate text-xs text-ink/50" title={`${row.category_name}${row.sub_category_name ? " / " + row.sub_category_name : ""}`}>
-          {row.category_name}{row.sub_category_name ? ` / ${row.sub_category_name}` : ""}
-        </span>
-        <span className="w-28 shrink-0 text-right tabular text-sm">{formatMoney(row.total_amount)}</span>
-        <span className="w-28 shrink-0 text-right tabular text-sm text-ok">{formatMoney(row.paid_amount)}</span>
-        <span className="w-28 shrink-0 text-right tabular text-sm text-warn">{formatMoney(row.balance_due)}</span>
-        <span className="w-32 shrink-0 flex justify-end"><StatusBadge status={row.payment_status} /></span>
-      </button>
+      <div className={`w-full flex items-center gap-3 px-3 py-3 ${hasPayments ? "hover:bg-brand-50" : ""}`}>
+        <button
+          type="button"
+          onClick={() => hasPayments && onToggle(row.expense_id)}
+          className={`flex items-center gap-3 flex-1 min-w-0 text-left ${hasPayments ? "cursor-pointer" : "cursor-default"}`}
+        >
+          <span className="w-4 shrink-0 text-ink/30">
+            {hasPayments ? (expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />) : null}
+          </span>
+          <span className="w-32 shrink-0 font-medium text-sm">{row.expense_number}</span>
+          <span className="w-24 shrink-0 text-xs text-ink/50 whitespace-nowrap">{formatDate(row.expense_date)}</span>
+          <span className="w-32 shrink-0 text-[11px] text-ink/40 uppercase whitespace-nowrap overflow-hidden text-ellipsis" title={row.source_type.replace(/_/g, " ")}>
+            {row.source_type.replace(/_/g, " ")}
+          </span>
+          <span className="flex-1 min-w-0 truncate text-sm" title={row.payee}>{row.payee}</span>
+          <span className="w-40 shrink-0 truncate text-xs text-ink/50" title={`${row.category_name}${row.sub_category_name ? " / " + row.sub_category_name : ""}`}>
+            {row.category_name}{row.sub_category_name ? ` / ${row.sub_category_name}` : ""}
+          </span>
+          <span className="w-28 shrink-0 text-right tabular text-sm">{formatMoney(row.total_amount)}</span>
+          <span className="w-28 shrink-0 text-right tabular text-sm text-ok">{formatMoney(row.paid_amount)}</span>
+          <span className="w-28 shrink-0 text-right tabular text-sm text-warn">{formatMoney(row.balance_due)}</span>
+          <span className="w-32 shrink-0 flex justify-end"><StatusBadge status={row.payment_status} /></span>
+        </button>
+        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+          <Attachments {...expenseAttachmentsProps(row)} compact readOnly label="Proof / Bill" />
+        </div>
+      </div>
 
       {expanded && hasPayments && (
         <div className="pb-2 pl-11 pr-3 space-y-1.5">
@@ -60,6 +73,9 @@ function ExpenseRow({ row, expanded, onToggle }) {
                   <div className="text-ink/40 mt-0.5">Also paid: {p.other_expense_numbers.join(", ")}</div>
                 )}
               </div>
+              <div className="shrink-0">
+                <Attachments documentType="PAYMENT" paymentId={p.payment_id} compact readOnly label="Receipt" />
+              </div>
               <div className="shrink-0 text-right">
                 <div className="tabular font-medium">{formatMoney(p.allocated_amount)}</div>
                 {p.covers_multiple_expenses && (
@@ -83,7 +99,10 @@ export default function ExpensePaymentMappingReport() {
   const [subCategoryId, setSubCategoryId] = useState("");
   const [sourceType, setSourceType] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [rows, setRows] = useState(null);
+  const [totalCount, setTotalCount] = useState(0);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
 
   useEffect(() => {
@@ -95,21 +114,25 @@ export default function ExpensePaymentMappingReport() {
   }, []);
 
   useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+  useEffect(() => { setPage(1); }, [range, projectId, categoryId, subCategoryId, sourceType, paymentStatus, pageSize]);
 
   useEffect(() => {
     if (!range) return;
-    const params = { date_from: range.from, date_to: range.to };
+    const params = { date_from: range.from, date_to: range.to, page, page_size: pageSize };
     if (projectId) params.project_id = projectId;
     if (categoryId) params.category_id = categoryId;
     if (subCategoryId) params.sub_category_id = subCategoryId;
     if (sourceType) params.source_type = sourceType;
     if (paymentStatus) params.payment_status = paymentStatus;
     client.get("/reports/expense-payment-mapping", { params }).then((res) => {
-      setRows(res.data);
+      setRows(res.data.rows);
+      setTotalCount(res.data.count);
       // Default to expanded so the mapping is visible without extra clicks.
-      setExpandedIds(new Set(res.data.filter((r) => r.payments.length > 0).map((r) => r.expense_id)));
+      setExpandedIds(new Set(res.data.rows.filter((r) => r.payments.length > 0).map((r) => r.expense_id)));
     });
-  }, [range, projectId, categoryId, subCategoryId, sourceType, paymentStatus]);
+  }, [range, projectId, categoryId, subCategoryId, sourceType, paymentStatus, page, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   function toggle(id) {
     setExpandedIds((s) => {
@@ -136,23 +159,25 @@ export default function ExpensePaymentMappingReport() {
         <Card>
           <div className="flex flex-wrap items-end gap-4">
             <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
-            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          </div>
+          <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
+            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
               <option value="">All Projects</option>
               {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
-            <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
+            <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)} className="w-44">
               <option value="">All Sources</option>
               {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
             </Select>
-            <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
               <option value="">All Heads</option>
               {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+            <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
               <option value="">All Sub-Heads</option>
               {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
-            <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+            <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="w-44">
               <option value="">All Payment Statuses</option>
               {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
             </Select>
@@ -170,7 +195,7 @@ export default function ExpensePaymentMappingReport() {
 
           <Card>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs text-ink/50">{rows.length} expense(s)</div>
+              <div className="text-xs text-ink/50">{totalCount} expense(s)</div>
               <div className="flex gap-3">
                 <button type="button" onClick={expandAll} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline"><ChevronsDown size={13} /> Expand All</button>
                 <button type="button" onClick={collapseAll} className="text-xs inline-flex items-center gap-1 text-brand-700 hover:underline"><ChevronsUp size={13} /> Collapse All</button>
@@ -197,6 +222,34 @@ export default function ExpensePaymentMappingReport() {
                 <ExpenseRow key={row.expense_id} row={row} expanded={expandedIds.has(row.expense_id)} onToggle={toggle} />
               ))
             )}
+
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
+              <div className="flex items-center gap-2">
+                <span>Rows per page</span>
+                <div className="w-20">
+                  <Select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                    {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </Select>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span>Page {page} of {totalPages} · {totalCount} total</span>
+                <div className="flex gap-1">
+                  <button
+                    type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                  <button
+                    type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                  >
+                    <ChevronRight size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </Card>
         </>
       )}

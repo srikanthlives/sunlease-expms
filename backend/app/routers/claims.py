@@ -1,16 +1,17 @@
 import datetime as dt
+from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
 from app.core.deps import get_current_user, require_approver
 from app.db.session import get_db
-from app.models.models import EmployeeClaim, Employee, Project, User
+from app.models.models import EmployeeClaim, Employee, Project, User, ExpenseCategory
 from app.models.enums import ClaimStatus, RoleName
 from app.schemas.transactions import ClaimCreate, ClaimUpdate, ClaimOut, RejectRequest, EmailPdfRequest
-from app.services import claim_service, project_scope_service, claim_pdf_service, email_service
+from app.services import claim_service, project_scope_service, claim_pdf_service, claims_list_pdf_service, email_service
 
 router = APIRouter(prefix="/api/v1/claims", tags=["claims"])
 
@@ -65,13 +66,39 @@ def create_claim(payload: ClaimCreate, db: Session = Depends(get_db), user: User
     return claim
 
 
-@router.get("", response_model=list[ClaimOut])
-def list_claims(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    employee_id: int | None = None, status_: str | None = None,
-    mine: bool = False, pending_for_me: bool = False,
-    project_id: int | None = None, category_id: int | None = None,
-    date_from: dt.date | None = None, date_to: dt.date | None = None,
+_SORT_KEYS = {"claim_number", "employee_id", "category_id", "claim_date", "total_amount", "status"}
+
+
+def _sort_rows(rows: list[EmployeeClaim], sort_by: str, sort_dir: str) -> list[EmployeeClaim]:
+    """In-memory sort over the FULL filtered set (called before pagination
+    slices it) - mirrors expenses.py/invoices.py/payments.py's _sort_rows,
+    needed since employee/category names aren't plain EmployeeClaim columns."""
+    if sort_by not in _SORT_KEYS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown sort_by '{sort_by}'")
+
+    def key(c: EmployeeClaim):
+        if sort_by == "claim_number":
+            return c.claim_number or ""
+        if sort_by == "employee_id":
+            return (c.employee.employee_name if c.employee else "").lower()
+        if sort_by == "category_id":
+            return (c.category.name if c.category else "").lower()
+        if sort_by == "claim_date":
+            return c.claim_date
+        if sort_by == "total_amount":
+            return c.total_amount
+        if sort_by == "status":
+            return c.status or ""
+
+    with_value = [r for r in rows if key(r) is not None]
+    without_value = [r for r in rows if key(r) is None]
+    with_value.sort(key=key, reverse=(sort_dir == "desc"))
+    return with_value + without_value
+
+
+def _scoped_query(
+    db: Session, user: User, *, employee_id, status_, mine, pending_for_me,
+    project_id, category_id, date_from, date_to,
 ):
     q = db.query(EmployeeClaim)
     role = user.role.name
@@ -82,7 +109,7 @@ def list_claims(
 
     elif role == RoleName.MANAGER:
         if not user.employee_id:
-            return []
+            return q.filter(False)
         if mine:
             q = q.filter(EmployeeClaim.employee_id == user.employee_id)
         elif pending_for_me:
@@ -130,7 +157,100 @@ def list_claims(
         q = q.filter(EmployeeClaim.claim_date >= date_from)
     if date_to:
         q = q.filter(EmployeeClaim.claim_date <= date_to)
-    return q.order_by(EmployeeClaim.id.desc()).limit(500).all()
+    return q
+
+
+@router.get("", response_model=list[ClaimOut])
+def list_claims(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    employee_id: int | None = None, status_: str | None = None,
+    mine: bool = False, pending_for_me: bool = False,
+    project_id: int | None = None, category_id: int | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
+    sort_by: str | None = None, sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
+):
+    # page_size defaults to the old hardcoded cap (500) so existing callers
+    # that don't pass page/page_size keep seeing the full result set - only a
+    # caller that opts into a smaller page_size (the Claims list screens)
+    # gets truncated pages.
+    q = _scoped_query(
+        db, user, employee_id=employee_id, status_=status_, mine=mine, pending_for_me=pending_for_me,
+        project_id=project_id, category_id=category_id, date_from=date_from, date_to=date_to,
+    )
+    rows = q.order_by(EmployeeClaim.id.desc()).all()
+    if sort_by:
+        rows = _sort_rows(rows, sort_by, sort_dir)
+    page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
+    return page_rows
+
+
+@router.get("/summary")
+def claims_summary(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    employee_id: int | None = None, status_: str | None = None,
+    mine: bool = False, pending_for_me: bool = False,
+    project_id: int | None = None, category_id: int | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    """Aggregate totals over the FULL filtered result set (not just the
+    current page) - backs the pagination count and the amount summary row
+    on the Claims list screens. Same filters as GET /claims."""
+    q = _scoped_query(
+        db, user, employee_id=employee_id, status_=status_, mine=mine, pending_for_me=pending_for_me,
+        project_id=project_id, category_id=category_id, date_from=date_from, date_to=date_to,
+    )
+    rows = q.all()
+    total_amount = sum((c.total_amount for c in rows), Decimal("0"))
+    return {"count": len(rows), "total_amount": total_amount}
+
+
+def _describe_filters(db: Session, *, project_id, category_id, status_, date_from, date_to) -> str:
+    """Human-readable summary of the active filters, printed at the top of
+    the PDF so the export is self-documenting."""
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if project_id:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        parts.append(f"Project: {p.name if p else project_id}")
+    if category_id:
+        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
+        parts.append(f"Overall Head: {c.name if c else category_id}")
+    if status_:
+        parts.append(f"Status: {status_.replace('_', ' ')}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all claims)"
+
+
+@router.get("/export-pdf")
+def export_claims_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    employee_id: int | None = None, status_: str | None = None,
+    mine: bool = False, pending_for_me: bool = False,
+    project_id: int | None = None, category_id: int | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+    columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
+):
+    """PDF export of the Claims list (list view, not the single-claim detail
+    PDF from /claims/{id}/download-pdf) - same filters and visible columns as
+    the on-screen table. Always the full filtered result set, not just the
+    current page."""
+    q = _scoped_query(
+        db, user, employee_id=employee_id, status_=status_, mine=mine, pending_for_me=pending_for_me,
+        project_id=project_id, category_id=category_id, date_from=date_from, date_to=date_to,
+    )
+    rows = q.order_by(EmployeeClaim.id.desc()).all()
+    total_amount = sum((c.total_amount for c in rows), Decimal("0"))
+    summary = {"count": len(rows), "total_amount": total_amount}
+
+    filters_desc = _describe_filters(db, project_id=project_id, category_id=category_id, status_=status_, date_from=date_from, date_to=date_to)
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
+
+    pdf_bytes = claims_list_pdf_service.build_claims_pdf(rows, col_list, filters_desc, summary, user.full_name or user.username)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="claims-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.get("/{claim_id}", response_model=ClaimOut)

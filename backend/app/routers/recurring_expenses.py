@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from sqlalchemy import or_
@@ -12,7 +12,7 @@ from app.models.models import Project, RecurringExpense, RecurringExpenseInstanc
 from app.schemas.recurring_expenses import (
     InstanceRejectRequest, InstanceReviewRequest, RecurringExpenseCreate, RecurringExpenseInstanceOut, RecurringExpenseOut,
 )
-from app.services import audit_service, recurring_expense_service
+from app.services import audit_service, recurring_expense_service, recurring_expense_pdf_service
 
 router = APIRouter(prefix="/api/v1/recurring-expenses", tags=["recurring-expenses"])
 
@@ -248,6 +248,35 @@ def reject_instance(instance_id: int, payload: InstanceRejectRequest, db: Sessio
     db.commit()
     db.refresh(instance)
     return _instance_to_out(instance)
+
+
+def _describe_filters(is_active: bool | None) -> str:
+    if is_active is None:
+        return "Filters: none (all recurring expenses)"
+    return f"Filters: Status: {'Active' if is_active else 'Inactive'}"
+
+
+@router.get("/export-pdf", dependencies=[Depends(require_accounts)])
+def export_recurring_expenses_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user), is_active: bool | None = None,
+    columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
+):
+    """PDF export of the Recurring Expenses template list - same filters and
+    the same set of visible columns as the on-screen table."""
+    q = db.query(RecurringExpense)
+    q = _restrict_to_accounts_projects(q, user, RecurringExpense.project_id)
+    if is_active is not None:
+        q = q.filter(RecurringExpense.is_active == is_active)
+    rows = q.order_by(RecurringExpense.name).all()
+
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
+    pdf_bytes = recurring_expense_pdf_service.build_recurring_expenses_pdf(
+        rows, col_list, _describe_filters(is_active), len(rows), user.full_name or user.username,
+    )
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="recurring-expenses-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 # NOTE: this must stay below the more specific "/instances*" routes above -

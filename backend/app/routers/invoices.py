@@ -1,14 +1,15 @@
 import datetime as dt
+from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_accounts, require_non_employee, require_admin
 from app.db.session import get_db
-from app.models.models import Invoice, Expense, User
+from app.models.models import Invoice, Expense, User, Project, Vendor, ExpenseCategory, ExpenseSubCategory
 from app.schemas.transactions import InvoiceCreate, InvoiceOut, CancelRequest
 from app.schemas.edit_requests import InvoiceUpdate
-from app.services import invoice_service, edit_request_service, project_scope_service
+from app.services import invoice_service, edit_request_service, project_scope_service, invoice_pdf_service
 from app.models.enums import RoleName
 
 router = APIRouter(prefix="/api/v1/invoices", tags=["invoices"])
@@ -28,6 +29,71 @@ def _to_out(inv: Invoice) -> InvoiceOut:
         out.verified_by_name = (inv.expense.verifier.full_name or inv.expense.verifier.username) if inv.expense.verifier else None
         out.verified_at = inv.expense.verified_at
     return out
+
+
+_SORT_KEYS = {
+    "invoice_number", "vendor_id", "invoice_date", "due_date", "project_id",
+    "category_id", "sub_category_id", "taxable_amount", "total_amount", "status",
+}
+
+
+def _sort_rows(rows: list[Invoice], sort_by: str, sort_dir: str) -> list[Invoice]:
+    """In-memory sort over the FULL filtered set (called before pagination
+    slices it) - needed for name-derived keys (vendor/project/category live
+    on related rows, not plain Invoice columns). Mirrors expenses.py's
+    _sort_rows for the same reason and at the same small-scale assumption."""
+    if sort_by not in _SORT_KEYS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown sort_by '{sort_by}'")
+
+    def key(inv: Invoice):
+        if sort_by == "invoice_number":
+            return inv.invoice_number or ""
+        if sort_by == "vendor_id":
+            return (inv.vendor.vendor_name if inv.vendor else "").lower()
+        if sort_by == "invoice_date":
+            return inv.invoice_date
+        if sort_by == "due_date":
+            return inv.due_date
+        if sort_by == "project_id":
+            return (inv.project.name if inv.project else "").lower()
+        if sort_by == "category_id":
+            return (inv.expense.category.name if inv.expense and inv.expense.category else "").lower()
+        if sort_by == "sub_category_id":
+            return (inv.expense.sub_category.name if inv.expense and inv.expense.sub_category else "").lower()
+        if sort_by == "taxable_amount":
+            return inv.taxable_amount
+        if sort_by == "total_amount":
+            return inv.total_amount
+        if sort_by == "status":
+            return inv.status or ""
+
+    with_value = [r for r in rows if key(r) is not None]
+    without_value = [r for r in rows if key(r) is None]
+    with_value.sort(key=key, reverse=(sort_dir == "desc"))
+    return with_value + without_value
+
+
+def _apply_filters(
+    q, *, vendor_id, project_id, category_id, sub_category_id, status_, date_from, date_to,
+):
+    if vendor_id:
+        q = q.filter(Invoice.vendor_id == vendor_id)
+    if project_id:
+        q = q.filter(Invoice.project_id == project_id)
+    if status_:
+        q = q.filter(Invoice.status == status_)
+    if date_from:
+        q = q.filter(Invoice.invoice_date >= date_from)
+    if date_to:
+        q = q.filter(Invoice.invoice_date <= date_to)
+    if category_id or sub_category_id:
+        # Category/Sub-Category live on the linked Expense, not Invoice itself.
+        q = q.join(Expense, Invoice.expense_id == Expense.id)
+        if category_id:
+            q = q.filter(Expense.category_id == category_id)
+        if sub_category_id:
+            q = q.filter(Expense.sub_category_id == sub_category_id)
+    return q
 
 
 @router.post("", response_model=InvoiceOut, dependencies=[Depends(require_accounts)])
@@ -52,27 +118,117 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: 
 def list_invoices(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
     vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
+    sub_category_id: int | None = None,
     status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
+    sort_by: str | None = None, sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):
-    q = db.query(Invoice)
-    if vendor_id:
-        q = q.filter(Invoice.vendor_id == vendor_id)
-    if project_id:
-        q = q.filter(Invoice.project_id == project_id)
-    if status_:
-        q = q.filter(Invoice.status == status_)
-    if date_from:
-        q = q.filter(Invoice.invoice_date >= date_from)
-    if date_to:
-        q = q.filter(Invoice.invoice_date <= date_to)
-    if category_id:
-        # Category lives on the linked Expense, not Invoice itself.
-        q = q.join(Expense, Invoice.expense_id == Expense.id).filter(Expense.category_id == category_id)
+    # page_size defaults to the old hardcoded cap (500) so existing callers
+    # that don't pass page/page_size keep seeing the full result set - only a
+    # caller that opts into a smaller page_size (the Invoices list screen)
+    # gets truncated pages.
+    q = _apply_filters(
+        db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
+        sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
+    )
     if user.role.name == RoleName.ACCOUNTS:
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
-    rows = q.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).limit(500).all()
-    return [_to_out(inv) for inv in rows]
+    rows = q.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).all()
+    if sort_by:
+        rows = _sort_rows(rows, sort_by, sort_dir)
+    page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
+    return [_to_out(inv) for inv in page_rows]
+
+
+@router.get("/summary", dependencies=[Depends(require_non_employee)])
+def invoices_summary(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
+    sub_category_id: int | None = None,
+    status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    """Aggregate totals over the FULL filtered result set (not just the
+    current page) - backs the pagination count and the amounts summary row
+    on the Invoices list screen. Same filters as GET /invoices."""
+    q = _apply_filters(
+        db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
+        sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
+    )
+    if user.role.name == RoleName.ACCOUNTS:
+        assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+        q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
+    rows = q.all()
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
+    total_amount = sum((r.total_amount for r in rows), Decimal("0"))
+    return {
+        "count": len(rows), "taxable_amount": taxable_amount,
+        "tax_amount": tax_amount, "total_amount": total_amount,
+    }
+
+
+def _describe_filters(
+    db: Session, *, vendor_id, project_id, category_id, sub_category_id, status_, date_from, date_to,
+) -> str:
+    """Human-readable summary of the active filters, printed at the top of
+    the PDF so the export is self-documenting."""
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if vendor_id:
+        v = db.query(Vendor).filter(Vendor.id == vendor_id).first()
+        parts.append(f"Vendor: {v.vendor_name if v else vendor_id}")
+    if project_id:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        parts.append(f"Project: {p.name if p else project_id}")
+    if category_id:
+        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
+        parts.append(f"Head: {c.name if c else category_id}")
+    if sub_category_id:
+        s = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id).first()
+        parts.append(f"Sub-Head: {s.name if s else sub_category_id}")
+    if status_:
+        parts.append(f"Status: {status_}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all invoices)"
+
+
+@router.get("/export-pdf", dependencies=[Depends(require_non_employee)])
+def export_invoices_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
+    sub_category_id: int | None = None,
+    status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+    columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
+):
+    """PDF export of the Invoices list - same filters and the same set of
+    visible columns as the on-screen table. Always the full filtered result
+    set, not just the current page."""
+    q = _apply_filters(
+        db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
+        sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
+    )
+    if user.role.name == RoleName.ACCOUNTS:
+        assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+        q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
+    rows = q.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).all()
+
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
+    total_amount = sum((r.total_amount for r in rows), Decimal("0"))
+    summary = {"count": len(rows), "taxable_amount": taxable_amount, "tax_amount": tax_amount, "total_amount": total_amount}
+
+    filters_desc = _describe_filters(
+        db, vendor_id=vendor_id, project_id=project_id, category_id=category_id,
+        sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
+    )
+    col_list = [c.strip() for c in columns.split(",") if c.strip()] if columns else None
+
+    pdf_bytes = invoice_pdf_service.build_invoices_pdf(rows, col_list, filters_desc, summary, user.full_name or user.username)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="invoices-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut, dependencies=[Depends(require_non_employee)])

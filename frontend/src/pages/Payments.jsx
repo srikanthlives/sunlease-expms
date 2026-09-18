@@ -6,9 +6,10 @@ import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
-import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff, Columns3 } from "lucide-react";
+import { Plus, X, Trash2, Pencil, ShieldCheck, ShieldOff, Columns3, ChevronLeft, ChevronRight, FileDown } from "lucide-react";
 
 const PAYMENT_MODES = ["NEFT", "RTGS", "IMPS", "UPI", "CASH", "CHEQUE"];
+const PAGE_SIZES = [25, 50, 100];
 
 // Columns the user can show/hide via the "Columns" picker. payment_number,
 // payment_date (both sticky-left) and __actions stay mandatory - excluded
@@ -62,6 +63,7 @@ export default function Payments() {
   const { user } = useAuth();
   const masters = useMasters();
   const [payments, setPayments] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState(null);
   const [bounds, setBounds] = useState(null);
@@ -72,9 +74,13 @@ export default function Payments() {
   const [projectId, setProjectId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [subCategoryId, setSubCategoryId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sort, setSort] = useState(null);
   const [hiddenCols, setHiddenCols] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
   });
+  const [exporting, setExporting] = useState(false);
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
@@ -107,7 +113,7 @@ export default function Payments() {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
   }, []);
 
-  function load() {
+  function filterParams() {
     const params = {};
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
@@ -117,11 +123,42 @@ export default function Payments() {
     if (projectId) params.project_id = projectId;
     if (categoryId) params.category_id = categoryId;
     if (subCategoryId) params.sub_category_id = subCategoryId;
-    client.get("/payments", { params }).then((res) => setPayments(res.data));
+    return params;
   }
-  useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId]);
+
+  function load() {
+    const listParams = { ...filterParams(), page, page_size: pageSize };
+    if (sort) { listParams.sort_by = sort.key; listParams.sort_dir = sort.dir; }
+    client.get("/payments", { params: listParams }).then((res) => setPayments(res.data));
+    client.get("/payments/summary", { params: filterParams() }).then((res) => setSummary(res.data));
+  }
+  useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId, page, pageSize, sort]);
+  useEffect(() => { setPage(1); }, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId, pageSize, sort]);
   // Selecting a different Head clears any Sub-Head that no longer belongs to it.
   useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+
+  async function downloadPdf() {
+    const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => k !== "attachments" && !hiddenCols.has(k));
+    setExporting(true);
+    try {
+      const res = await client.get("/payments/export-pdf", {
+        params: { ...filterParams(), columns: visibleColumns.join(",") },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `payments-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
   function payeeOf(r) {
     if (r.vendor_id) { const v = masters.vendors.find((v) => v.id === r.vendor_id); return v ? vendorLabel(v) : "—"; }
@@ -152,27 +189,29 @@ export default function Payments() {
       <Card>
         <div className="flex flex-wrap items-end gap-4">
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        </div>
+        <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
             <option value="">All Projects</option>
             {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
             <option value="">All Heads</option>
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
-          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId}>
+          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
             <option value="">All Sub-Heads</option>
             {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
-          <Select label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+          <Select label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-44">
             <option value="">All Accounts</option>
             {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
           </Select>
-          <Select label="Mode" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)}>
+          <Select label="Mode" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)} className="w-44">
             <option value="">All Modes</option>
             {PAYMENT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
           </Select>
-          <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-44">
             <option value="">All Statuses</option>
             <option value="ACTIVE">Active</option>
             <option value="CANCELLED">Cancelled</option>
@@ -181,12 +220,17 @@ export default function Payments() {
       </Card>
 
       <Card>
-        <div className="flex justify-end mb-2">
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
           <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
         </div>
         <Table
           compact
           stickyHeader
+          sort={sort}
+          onSortChange={setSort}
           columns={[
             { key: "payment_number", header: "Payment #", stickyLeft: true, stickyWidth: 130, render: (r) => <span className="whitespace-nowrap">{r.payment_number}</span> },
             {
@@ -261,7 +305,41 @@ export default function Payments() {
             }] : []),
           ].filter((c) => ["payment_number", "payment_date", "__actions"].includes(c.key) || !hiddenCols.has(c.key))}
           rows={payments}
+          footer={summary && {
+            payment_number: `${summary.count} payment(s)`,
+            amount: <span className="tabular">{formatMoney(summary.amount)}</span>,
+          }}
         />
+
+        {summary && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <div className="w-20">
+                <Select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                  {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>Page {page} of {totalPages} · {summary.count} total</span>
+              <div className="flex gap-1">
+                <button
+                  type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

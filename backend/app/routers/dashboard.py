@@ -348,6 +348,7 @@ def expense_payment_mapping(
     project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
     source_type: str | None = None, payment_status: str | None = None,
     date_from: str | None = None, date_to: str | None = None,
+    page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=500),
 ):
     """Tree view for reconciliation: each expense as the parent line, with
     every payment that touched it listed underneath. A payment that was
@@ -376,9 +377,13 @@ def expense_payment_mapping(
         q = q.filter(Expense.expense_date >= date_from)
     if date_to:
         q = q.filter(Expense.expense_date <= date_to)
-    expenses = q.order_by(Expense.expense_date.desc(), Expense.id.desc()).limit(500).all()
+    total_count = q.count()
+    expenses = (
+        q.order_by(Expense.expense_date.desc(), Expense.id.desc())
+        .offset((page - 1) * page_size).limit(page_size).all()
+    )
     if not expenses:
-        return []
+        return {"count": total_count, "rows": []}
 
     expense_ids = [e.id for e in expenses]
     allocations = (
@@ -449,6 +454,7 @@ def expense_payment_mapping(
             "expense_number": e.expense_number,
             "expense_date": str(e.expense_date),
             "source_type": e.source_type,
+            "source_id": e.source_id,
             "payee": payee_of(e),
             "project_name": e.project.name if e.project else "—",
             "category_name": e.category.name if e.category else "Uncategorised",
@@ -460,16 +466,22 @@ def expense_payment_mapping(
             "payment_status": e.payment_status,
             "payments": payment_rows,
         })
-    return result
+    return {"count": total_count, "rows": result}
 
 
 @router.get("/reports/account-wise", dependencies=[Depends(require_report_viewer)])
 def account_wise_report(
     db: Session = Depends(get_db), date_from: str | None = None, date_to: str | None = None,
+    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    source_type: str | None = None, payment_status: str | None = None,
 ):
     """Total amount paid out through each Account (bank/cash/UPI) within a
     date range - straight sum of Payment.amount, since Payment has no
-    project_id to scope by (see CLAUDE.md note on this)."""
+    project_id to scope by (see CLAUDE.md note on this) - project/head/
+    sub-head/source/payment-status filters (same set as the Expense <->
+    Payment Mapping report) reach through PaymentAllocation -> Expense,
+    matching a payment if ANY of its allocations touches a matching expense."""
+    needs_expense_join = any([project_id, category_id, sub_category_id, source_type, payment_status])
     accounts = db.query(Account).all()
     result = []
     for acc in accounts:
@@ -478,6 +490,21 @@ def account_wise_report(
             q = q.filter(Payment.payment_date >= date_from)
         if date_to:
             q = q.filter(Payment.payment_date <= date_to)
+        if needs_expense_join:
+            q = q.join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id).join(
+                Expense, PaymentAllocation.expense_id == Expense.id
+            )
+            if project_id:
+                q = q.filter(Expense.project_id == project_id)
+            if category_id:
+                q = q.filter(Expense.category_id == category_id)
+            if sub_category_id:
+                q = q.filter(Expense.sub_category_id == sub_category_id)
+            if source_type:
+                q = q.filter(Expense.source_type == source_type)
+            if payment_status:
+                q = q.filter(Expense.payment_status == payment_status)
+            q = q.distinct()
         payments = q.all()
         total = sum(Decimal(p.amount) for p in payments)
         if total <= 0 and not payments:

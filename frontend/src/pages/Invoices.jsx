@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
@@ -7,14 +7,66 @@ import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicke
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Pencil, Trash2, ShieldCheck, ShieldOff } from "lucide-react";
+import { Plus, X, Pencil, Trash2, ShieldCheck, ShieldOff, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
 
 const INVOICE_STATUSES = ["RECORDED", "CANCELLED"];
+const PAGE_SIZES = [25, 50, 100];
+
+// Columns the user can show/hide via the "Columns" picker. invoice_number,
+// invoice_date (both sticky-left) and __actions stay mandatory - excluded
+// here so they're always rendered regardless of what's hidden.
+const TOGGLEABLE_COLUMNS = [
+  { key: "vendor_id", label: "Vendor" },
+  { key: "due_date", label: "Due Date" },
+  { key: "project_id", label: "Project" },
+  { key: "category_id", label: "Head" },
+  { key: "sub_category_id", label: "Sub-Head" },
+  { key: "description", label: "Description" },
+  { key: "taxable_amount", label: "Taxable" },
+  { key: "tax", label: "Tax" },
+  { key: "total_amount", label: "Amount" },
+  { key: "status", label: "Status" },
+  { key: "is_verified", label: "Verified" },
+  { key: "attachments", label: "Invoice / Bill" },
+];
+const HIDDEN_COLUMNS_STORAGE_KEY = "expms_invoices_hidden_columns";
+
+function ColumnsPicker({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="outline" onClick={() => setOpen((o) => !o)}>
+        <Columns3 size={16} /> Columns
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-ink/15 rounded-md shadow-lg py-2">
+          {TOGGLEABLE_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 cursor-pointer">
+              <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => onToggle(c.key)} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Invoices() {
   const { user } = useAuth();
   const masters = useMasters();
   const [invoices, setInvoices] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [bounds, setBounds] = useState(null);
@@ -22,7 +74,15 @@ export default function Invoices() {
   const [projectId, setProjectId] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [subCategoryId, setSubCategoryId] = useState("");
   const [invoiceStatus, setInvoiceStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sort, setSort] = useState(null);
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const [exporting, setExporting] = useState(false);
   const canCreate = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const canEdit = ["ADMIN", "SUPER_ADMIN", "ACCOUNTS"].includes(user?.role);
   const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(user?.role);
@@ -42,21 +102,63 @@ export default function Invoices() {
     }
   }
 
+  function toggleColumn(key) {
+    setHiddenCols((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   useEffect(() => {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
   }, []);
 
-  function load() {
+  function filterParams() {
     const params = {};
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
     if (projectId) params.project_id = projectId;
     if (vendorId) params.vendor_id = vendorId;
     if (categoryId) params.category_id = categoryId;
+    if (subCategoryId) params.sub_category_id = subCategoryId;
     if (invoiceStatus) params.status_ = invoiceStatus;
-    client.get("/invoices", { params }).then((res) => setInvoices(res.data));
+    return params;
   }
-  useEffect(load, [range.from, range.to, projectId, vendorId, categoryId, invoiceStatus]);
+
+  function load() {
+    const listParams = { ...filterParams(), page, page_size: pageSize };
+    if (sort) { listParams.sort_by = sort.key; listParams.sort_dir = sort.dir; }
+    client.get("/invoices", { params: listParams }).then((res) => setInvoices(res.data));
+    client.get("/invoices/summary", { params: filterParams() }).then((res) => setSummary(res.data));
+  }
+  useEffect(load, [range.from, range.to, projectId, vendorId, categoryId, subCategoryId, invoiceStatus, page, pageSize, sort]);
+  useEffect(() => { setPage(1); }, [range.from, range.to, projectId, vendorId, categoryId, subCategoryId, invoiceStatus, pageSize, sort]);
+  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+
+  async function downloadPdf() {
+    const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => k !== "attachments" && !hiddenCols.has(k));
+    setExporting(true);
+    try {
+      const res = await client.get("/invoices/export-pdf", {
+        params: { ...filterParams(), columns: visibleColumns.join(",") },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoices-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
   const vendorName = (id) => { const v = masters.vendors.find((v) => v.id === id); return v ? vendorLabel(v) : id; };
   const projectName = (id) => masters.projects.find((p) => p.id === id)?.name || "—";
@@ -86,19 +188,25 @@ export default function Invoices() {
       <Card>
         <div className="flex flex-wrap items-end gap-4">
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+        </div>
+        <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
+          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
             <option value="">All Projects</option>
             {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <Select label="Vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+          <Select label="Vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-44">
             <option value="">All Vendors</option>
             {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
           </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
             <option value="">All Heads</option>
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
-          <Select label="Status" value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value)}>
+          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
+            <option value="">All Sub-Heads</option>
+            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+          <Select label="Status" value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value)} className="w-44">
             <option value="">All Statuses</option>
             {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
@@ -106,23 +214,31 @@ export default function Invoices() {
       </Card>
 
       <Card>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+          <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
+        </div>
         <Table
           compact
           stickyHeader
+          sort={sort}
+          onSortChange={setSort}
           columns={[
-            { key: "invoice_number", header: "Invoice #", stickyLeft: true, stickyWidth: 130 },
+            { key: "invoice_number", header: "Invoice #", stickyLeft: true, stickyWidth: 130, sortable: true },
             {
-              key: "vendor_id", header: "Vendor",
+              key: "vendor_id", header: "Vendor", sortable: true,
               render: (r) => { const text = vendorName(r.vendor_id); return <span title={text} className="block max-w-[200px] truncate">{text}</span>; },
             },
-            { key: "invoice_date", header: "Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
-            { key: "due_date", header: "Due Date", render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
+            { key: "invoice_date", header: "Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
+            { key: "due_date", header: "Due Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
             {
-              key: "project_id", header: "Project",
+              key: "project_id", header: "Project", sortable: true,
               render: (r) => { const text = projectName(r.project_id); return <span title={text} className="block max-w-[160px] truncate">{text}</span>; },
             },
-            { key: "category_id", header: "Head", render: (r) => r.category_id ? categoryName(r.category_id) : "—" },
-            { key: "sub_category_id", header: "Sub-Head", render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
+            { key: "category_id", header: "Head", sortable: true, render: (r) => r.category_id ? categoryName(r.category_id) : "—" },
+            { key: "sub_category_id", header: "Sub-Head", sortable: true, render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
             {
               key: "description", header: "Description",
               render: (r) => {
@@ -134,13 +250,13 @@ export default function Invoices() {
                 ) : "—";
               },
             },
-            { key: "taxable_amount", header: "Taxable", align: "right", render: (r) => <span className="tabular">{formatMoney(r.taxable_amount)}</span> },
+            { key: "taxable_amount", header: "Taxable", sortable: true, align: "right", render: (r) => <span className="tabular">{formatMoney(r.taxable_amount)}</span> },
             {
               key: "tax", header: "Tax", align: "right",
               render: (r) => <span className="tabular">{formatMoney(Number(r.cgst) + Number(r.sgst) + Number(r.igst) + Number(r.other_tax))}</span>,
             },
-            { key: "total_amount", header: "Amount", align: "right", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
-            { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
+            { key: "total_amount", header: "Amount", sortable: true, align: "right", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
+            { key: "status", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.status} /> },
             {
               key: "is_verified", header: "Verified",
               render: (r) => r.is_verified
@@ -172,9 +288,45 @@ export default function Invoices() {
                 );
               },
             }] : []),
-          ]}
+          ].filter((c) => ["invoice_number", "invoice_date", "__actions"].includes(c.key) || !hiddenCols.has(c.key))}
           rows={invoices}
+          footer={summary && {
+            invoice_number: `${summary.count} invoice(s)`,
+            taxable_amount: <span className="tabular">{formatMoney(summary.taxable_amount)}</span>,
+            tax: <span className="tabular">{formatMoney(summary.tax_amount)}</span>,
+            total_amount: <span className="tabular">{formatMoney(summary.total_amount)}</span>,
+          }}
         />
+
+        {summary && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <div className="w-20">
+                <Select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                  {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>Page {page} of {totalPages} · {summary.count} total</span>
+              <div className="flex gap-1">
+                <button
+                  type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

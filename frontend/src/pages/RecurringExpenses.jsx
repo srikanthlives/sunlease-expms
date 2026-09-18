@@ -1,9 +1,59 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
 import { Card, Table, Button, Input, Select, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
-import { Plus, X, Pencil, Power, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
+import { Plus, X, Pencil, Power, ShieldCheck, ShieldOff, Trash2, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
+
+const PAGE_SIZES = [25, 50, 100];
+
+// Columns the user can show/hide via the "Columns" picker. name and
+// __actions stay mandatory - excluded here so they're always rendered
+// regardless of what's hidden.
+const TOGGLEABLE_COLUMNS = [
+  { key: "frequency", label: "Frequency" },
+  { key: "amount_type", label: "Amount" },
+  { key: "payee", label: "Payee" },
+  { key: "project_id", label: "Project" },
+  { key: "category_id", label: "Head" },
+  { key: "sub_category_id", label: "Sub-Head" },
+  { key: "description", label: "Description" },
+  { key: "next_occurrence_date", label: "Next Bill Date" },
+  { key: "is_active", label: "Status" },
+  { key: "is_verified", label: "Verified" },
+];
+const HIDDEN_COLUMNS_STORAGE_KEY = "expms_recurring_expenses_hidden_columns";
+
+function ColumnsPicker({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="outline" onClick={() => setOpen((o) => !o)}>
+        <Columns3 size={16} /> Columns
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-ink/15 rounded-md shadow-lg py-2">
+          {TOGGLEABLE_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 cursor-pointer">
+              <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => onToggle(c.key)} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const FREQUENCIES = [
   { value: "WEEKLY", label: "Weekly" },
@@ -162,9 +212,46 @@ function TemplatesTab({ masters }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [exporting, setExporting] = useState(false);
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
+  });
+
+  function toggleColumn(key) {
+    setHiddenCols((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   function load() { client.get("/recurring-expenses").then((res) => setRows(res.data)); }
   useEffect(load, []);
+  useEffect(() => { setPage(1); }, [pageSize, rows.length]);
+
+  async function downloadPdf() {
+    const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => !hiddenCols.has(k));
+    setExporting(true);
+    try {
+      const res = await client.get("/recurring-expenses/export-pdf", {
+        params: { columns: visibleColumns.join(",") },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `recurring-expenses-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function toggleActive(row) {
     await client.post(`/recurring-expenses/${row.id}/${row.is_active ? "deactivate" : "activate"}`);
@@ -196,18 +283,30 @@ function TemplatesTab({ masters }) {
   };
 
   const columns = [
-    { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
-    { key: "frequency", header: "Frequency", render: (r) => FREQUENCIES.find((f) => f.value === r.frequency)?.label || r.frequency },
-    { key: "amount_type", header: "Amount", render: (r) => r.amount_type === "FIXED" ? formatMoney(r.fixed_amount) : <span className="text-ink/50 italic">Open</span> },
-    { key: "payee", header: "Payee", render: payeeName },
-    { key: "project_id", header: "Project", render: (r) => projectName(r.project_id) },
-    { key: "category_id", header: "Head", render: (r) => categoryName(r.category_id) },
-    { key: "sub_category_id", header: "Sub-Head", render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
-    { key: "description", header: "Description", render: (r) => <span title={r.description || ""} className="block max-w-[220px] truncate text-ink/60">{r.description || "—"}</span> },
-    { key: "next_occurrence_date", header: "Next Bill Date", render: (r) => formatDate(r.next_occurrence_date) },
-    { key: "is_active", header: "Status", render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
+    { key: "name", header: "Name", sortable: true, render: (r) => <span className="font-medium">{r.name}</span> },
     {
-      key: "is_verified", header: "Verified",
+      key: "frequency", header: "Frequency", sortable: true,
+      sortAccessor: (r) => FREQUENCIES.find((f) => f.value === r.frequency)?.label || r.frequency,
+      render: (r) => FREQUENCIES.find((f) => f.value === r.frequency)?.label || r.frequency,
+    },
+    {
+      key: "amount_type", header: "Amount", sortable: true,
+      sortAccessor: (r) => r.amount_type === "FIXED" ? Number(r.fixed_amount) : -1,
+      render: (r) => r.amount_type === "FIXED" ? formatMoney(r.fixed_amount) : <span className="text-ink/50 italic">Open</span>,
+    },
+    { key: "payee", header: "Payee", sortable: true, sortAccessor: payeeName, render: payeeName },
+    { key: "project_id", header: "Project", sortable: true, sortAccessor: (r) => projectName(r.project_id), render: (r) => projectName(r.project_id) },
+    { key: "category_id", header: "Head", sortable: true, sortAccessor: (r) => categoryName(r.category_id), render: (r) => categoryName(r.category_id) },
+    {
+      key: "sub_category_id", header: "Sub-Head", sortable: true,
+      sortAccessor: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "",
+      render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—",
+    },
+    { key: "description", header: "Description", render: (r) => <span title={r.description || ""} className="block max-w-[220px] truncate text-ink/60">{r.description || "—"}</span> },
+    { key: "next_occurrence_date", header: "Next Bill Date", sortable: true, render: (r) => formatDate(r.next_occurrence_date) },
+    { key: "is_active", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
+    {
+      key: "is_verified", header: "Verified", sortable: true,
       render: (r) => r.is_verified
         ? <span className="text-xs text-ok whitespace-nowrap" title={r.verified_by_name ? `Verified by ${r.verified_by_name}` : ""}>✓ Verified</span>
         : <span className="text-xs text-ink/40">—</span>,
@@ -244,6 +343,9 @@ function TemplatesTab({ masters }) {
     },
   ];
 
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const pageRows = rows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -255,7 +357,49 @@ function TemplatesTab({ masters }) {
           onSaved={() => { setShowForm(false); load(); }} />
       )}
       <Card>
-        <Table columns={columns} rows={rows} empty="No recurring expenses set up yet." />
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+          <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
+        </div>
+        <Table
+          compact
+          stickyHeader
+          columns={columns.filter((c) => ["name", "__actions"].includes(c.key) || !hiddenCols.has(c.key))}
+          rows={pageRows}
+          empty="No recurring expenses set up yet."
+        />
+
+        {rows.length > 0 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <div className="w-20">
+                <Select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                  {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>Page {page} of {totalPages} · {rows.length} total</span>
+              <div className="flex gap-1">
+                <button
+                  type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
@@ -7,14 +7,60 @@ import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDat
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
-import { Plus, X, Trash2, Pencil, FileDown, Mail, CheckCircle2 } from "lucide-react";
+import { Plus, X, Trash2, Pencil, FileDown, Mail, CheckCircle2, ChevronLeft, ChevronRight, Columns3 } from "lucide-react";
 
 const CLAIM_STATUSES = ["DRAFT", "SUBMITTED", "PENDING_ACCOUNTS_APPROVAL", "APPROVED", "REJECTED"];
+const PAGE_SIZES = [25, 50, 100];
+
+// Columns the user can show/hide via the "Columns" picker. claim_number
+// stays mandatory - excluded here so it's always rendered regardless of
+// what's hidden.
+const TOGGLEABLE_COLUMNS = [
+  { key: "employee_id", label: "Employee" },
+  { key: "category_id", label: "Overall Head" },
+  { key: "description", label: "Description" },
+  { key: "claim_date", label: "Date" },
+  { key: "total_amount", label: "Amount" },
+  { key: "status", label: "Status" },
+];
+const HIDDEN_COLUMNS_STORAGE_KEY = "expms_claims_hidden_columns";
+
+function ColumnsPicker({ hidden, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button variant="outline" onClick={() => setOpen((o) => !o)}>
+        <Columns3 size={16} /> Columns
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-64 max-h-80 overflow-y-auto bg-white border border-ink/15 rounded-md shadow-lg py-2">
+          {TOGGLEABLE_COLUMNS.map((c) => (
+            <label key={c.key} className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-brand-50 cursor-pointer">
+              <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => onToggle(c.key)} />
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const { user } = useAuth();
   const masters = useMasters();
   const [claims, setClaims] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [bounds, setBounds] = useState(null);
   // Claim Approvals has no date filter UI (see below) and must never
@@ -24,13 +70,29 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   const [projectId, setProjectId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [claimStatus, setClaimStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sort, setSort] = useState(null);
+  const [hiddenCols, setHiddenCols] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(HIDDEN_COLUMNS_STORAGE_KEY) || "[]")); } catch { return new Set(); }
+  });
+  const [exporting, setExporting] = useState(false);
   const navigate = useNavigate();
+
+  function toggleColumn(key) {
+    setHiddenCols((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem(HIDDEN_COLUMNS_STORAGE_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
 
   useEffect(() => {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
   }, []);
 
-  function load() {
+  function filterParams() {
     const params = {};
     if (mineOnly) params.mine = true;
     if (approvalsOnly) params.pending_for_me = true;
@@ -39,9 +101,40 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
     if (projectId) params.project_id = projectId;
     if (categoryId) params.category_id = categoryId;
     if (claimStatus) params.status_ = claimStatus;
-    client.get("/claims", { params }).then((res) => setClaims(res.data));
+    return params;
   }
-  useEffect(load, [mineOnly, approvalsOnly, range.from, range.to, projectId, categoryId, claimStatus]);
+
+  function load() {
+    const listParams = { ...filterParams(), page, page_size: pageSize };
+    if (sort) { listParams.sort_by = sort.key; listParams.sort_dir = sort.dir; }
+    client.get("/claims", { params: listParams }).then((res) => setClaims(res.data));
+    client.get("/claims/summary", { params: filterParams() }).then((res) => setSummary(res.data));
+  }
+  useEffect(load, [mineOnly, approvalsOnly, range.from, range.to, projectId, categoryId, claimStatus, page, pageSize, sort]);
+  useEffect(() => { setPage(1); }, [mineOnly, approvalsOnly, range.from, range.to, projectId, categoryId, claimStatus, pageSize, sort]);
+
+  async function downloadPdf() {
+    const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => !hiddenCols.has(k));
+    setExporting(true);
+    try {
+      const res = await client.get("/claims/export-pdf", {
+        params: { ...filterParams(), columns: visibleColumns.join(",") },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `claims-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
   const empName = (id) => masters.employees.find((e) => e.id === id)?.employee_name || id;
   const categoryName = (id) => masters.categories.find((c) => c.id === id)?.name || "—";
@@ -70,15 +163,17 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
         <Card>
           <div className="flex flex-wrap items-end gap-4">
             <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
-            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+          </div>
+          <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
+            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
               <option value="">All Projects</option>
               {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </Select>
-            <Select label="Overall Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <Select label="Overall Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
               <option value="">All Heads</option>
               {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
-            <Select label="Status" value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)}>
+            <Select label="Status" value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)} className="w-44">
               <option value="">All Statuses</option>
               {CLAIM_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
             </Select>
@@ -87,22 +182,66 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
       )}
 
       <Card>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+          <ColumnsPicker hidden={hiddenCols} onToggle={toggleColumn} />
+        </div>
         <Table
+          compact
+          stickyHeader
+          sort={sort}
+          onSortChange={setSort}
           columns={[
-            { key: "claim_number", header: "Claim #" },
-            { key: "employee_id", header: "Employee", render: (r) => empName(r.employee_id) },
-            { key: "category_id", header: "Overall Head", render: (r) => categoryName(r.category_id) },
+            { key: "claim_number", header: "Claim #", sortable: true },
+            { key: "employee_id", header: "Employee", sortable: true, render: (r) => empName(r.employee_id) },
+            { key: "category_id", header: "Overall Head", sortable: true, render: (r) => categoryName(r.category_id) },
             {
               key: "description", header: "Description",
               render: (r) => <span className="block min-w-[260px] max-w-[420px] whitespace-normal break-words text-ink/60">{r.description || "—"}</span>,
             },
-            { key: "claim_date", header: "Date", render: (r) => formatDate(r.claim_date) },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
-            { key: "status", header: "Status", render: (r) => <StatusBadge status={r.status} /> },
-          ]}
+            { key: "claim_date", header: "Date", sortable: true, render: (r) => formatDate(r.claim_date) },
+            { key: "total_amount", header: "Amount", sortable: true, render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
+            { key: "status", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.status} /> },
+          ].filter((c) => c.key === "claim_number" || !hiddenCols.has(c.key))}
           rows={claims}
           onRowClick={(r) => navigate(`/claims/${r.id}`)}
+          footer={summary && {
+            claim_number: `${summary.count} claim(s)`,
+            total_amount: <span className="tabular">{formatMoney(summary.total_amount)}</span>,
+          }}
         />
+
+        {summary && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <div className="w-20">
+                <Select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                  {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <span>Page {page} of {totalPages} · {summary.count} total</span>
+              <div className="flex gap-1">
+                <button
+                  type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-md border border-ink/15 disabled:opacity-30 hover:bg-brand-50"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );
