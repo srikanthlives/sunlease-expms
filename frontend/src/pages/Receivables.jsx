@@ -257,6 +257,14 @@ function QuotationsTab({ canManage }) {
             },
             { key: "quotation_date", header: "Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.quotation_date)}</span> },
             { key: "valid_until", header: "Valid Until", render: (r) => <span className="whitespace-nowrap">{r.valid_until ? formatDate(r.valid_until) : "—"}</span> },
+            {
+              key: "description", header: "Description",
+              render: (r) => r.description ? (
+                <span title={r.description} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
+                  {r.description}
+                </span>
+              ) : "—",
+            },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             { key: "receivable_invoice_number", header: "Invoice", render: (r) => <span className="whitespace-nowrap">{r.receivable_invoice_number || "—"}</span> },
@@ -515,6 +523,14 @@ function InvoicesTab({ canManage }) {
             },
             { key: "invoice_date", header: "Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
             { key: "due_date", header: "Due Date", render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
+            {
+              key: "description", header: "Description",
+              render: (r) => r.description ? (
+                <span title={r.description} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
+                  {r.description}
+                </span>
+              ) : "—",
+            },
             { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.total_amount)}</span> },
             { key: "paid_amount", header: "Received", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.paid_amount)}</span> },
             { key: "balance_due", header: "Balance", render: (r) => <span className="tabular font-medium whitespace-nowrap">{formatMoney(r.balance_due)}</span> },

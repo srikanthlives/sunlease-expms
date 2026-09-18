@@ -98,7 +98,7 @@ def _apply_filters(
 
 @router.post("", response_model=InvoiceOut, dependencies=[Depends(require_accounts)])
 def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     invoice = invoice_service.create_invoice(
         db, invoice_number=payload.invoice_number, po_number=payload.po_number, vendor_id=payload.vendor_id, invoice_date=payload.invoice_date,
@@ -131,7 +131,7 @@ def list_invoices(
         db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
         sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).all()
@@ -155,7 +155,7 @@ def invoices_summary(
         db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
         sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.all()
@@ -208,7 +208,7 @@ def export_invoices_pdf(
         db.query(Invoice), vendor_id=vendor_id, project_id=project_id, category_id=category_id,
         sub_category_id=sub_category_id, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Invoice.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).all()
@@ -236,7 +236,7 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Dep
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, inv.project_id)
     return _to_out(inv)
 
@@ -248,7 +248,7 @@ def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depend
     POST /expenses/{id}/verify) - after that, Accounts must propose the same
     edit via POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         existing = db.query(Invoice).filter(Invoice.id == invoice_id).first()
         if not existing:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
@@ -288,7 +288,7 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = 
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, inv.project_id)
         if edit_request_service.is_locked_for_accounts("INVOICE", inv):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This invoice has been verified by Admin and can no longer be deleted")
@@ -302,7 +302,7 @@ def cancel_invoice(invoice_id: int, payload: CancelRequest, db: Session = Depend
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, inv.project_id)
     invoice_service.cancel_invoice(db, inv, user.id, payload.reason)
     db.commit()

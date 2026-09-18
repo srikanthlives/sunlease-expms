@@ -118,7 +118,7 @@ def _apply_filters(
 def create_direct_expense(payload: DirectExpenseCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if payload.pay_immediately and (not payload.account_id or not payload.payment_mode or not payload.payment_date):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "account_id, payment_mode, payment_date required to pay immediately")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, payload.project_id)
 
     expense = expense_service.create_expense_record(
@@ -158,7 +158,7 @@ def list_expenses(
         category_id=category_id, sub_category_id=sub_category_id, source_type=source_type,
         payment_status=payment_status, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Expense.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
@@ -186,7 +186,7 @@ def expenses_summary(
         category_id=category_id, sub_category_id=sub_category_id, source_type=source_type,
         payment_status=payment_status, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Expense.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.all()
@@ -258,7 +258,7 @@ def export_expenses_pdf(
         category_id=category_id, sub_category_id=sub_category_id, source_type=source_type,
         payment_status=payment_status, status_=status_, date_from=date_from, date_to=date_to,
     )
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         q = q.filter(Expense.project_id.in_(assigned)) if assigned else q.filter(False)
     rows = q.order_by(Expense.expense_date.desc(), Expense.id.desc()).all()
@@ -295,7 +295,7 @@ def get_expense(expense_id: int, db: Session = Depends(get_db), user: User = Dep
     e = db.query(Expense).filter(Expense.id == expense_id).first()
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, e.project_id)
     return _to_out(db, e)
 
@@ -307,7 +307,7 @@ def update_expense(expense_id: int, payload: ExpenseUpdate, db: Session = Depend
     once Admin/Super Admin verifies it (see POST .../verify), Accounts is
     locked out and must propose the same edit via POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         existing = db.query(Expense).filter(Expense.id == expense_id).first()
         if not existing:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
@@ -348,7 +348,7 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db), user: User = 
     e = db.query(Expense).filter(Expense.id == expense_id).first()
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, e.project_id)
         if edit_request_service.is_locked_for_accounts("EXPENSE", e):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This expense has been verified by Admin and can no longer be deleted")
@@ -362,7 +362,7 @@ def cancel_expense(expense_id: int, payload: CancelRequest, db: Session = Depend
     e = db.query(Expense).filter(Expense.id == expense_id).first()
     if not e:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Expense not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_project_in_scope(db, user, e.project_id)
     expense_service.cancel_expense(db, e, user.id, payload.reason)
     db.commit()

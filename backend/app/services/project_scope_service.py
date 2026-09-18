@@ -1,12 +1,16 @@
-"""Project-scoping helpers for the ACCOUNTS role.
+"""Project-scoping helpers for the ACCOUNTS and SUPER_ACCOUNTS roles.
 
-Per this feature, ACCOUNTS is ALWAYS project-restricted (no implicit
-company-wide fallback): an Accounts user only sees/acts on
+Per this feature, ACCOUNTS (and SUPER_ACCOUNTS, which is Accounts-plus-
+Receivables - see core/deps.py) is ALWAYS project-restricted (no implicit
+company-wide fallback): either one only sees/acts on
 expenses/invoices/payments/claims belonging to projects they've been
-explicitly assigned to via `project_accounts_users`. SUPER_ADMIN, ADMIN and
-VIEWER are unaffected - this module is only ever consulted for role
-ACCOUNTS specifically; callers should check `user.role.name == "ACCOUNTS"`
-before using it (company-wide roles should skip scoping entirely).
+explicitly assigned to via `project_accounts_users` (the same assignment
+mechanism - see routers/masters.py::assign_project_accounts_users - works
+for both roles, so a SUPER_ACCOUNTS user is scoped exactly like an ACCOUNTS
+user once assigned). SUPER_ADMIN, ADMIN and VIEWER are unaffected - this
+module is only ever consulted for these two roles specifically; callers
+should check `user.role.name in ("ACCOUNTS", "SUPER_ACCOUNTS")` before using
+it (company-wide roles should skip scoping entirely).
 """
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -29,7 +33,7 @@ def get_effective_project_scope(db: Session, user: User) -> list[int] | None:
     an empty IN clause). Used by dashboard/report endpoints so an ACCOUNTS
     user can never see aggregate/company-wide figures outside their assigned
     projects, even when no explicit project_id filter is passed."""
-    if user.role.name != "ACCOUNTS":
+    if user.role.name not in ("ACCOUNTS", "SUPER_ACCOUNTS"):
         return None
     return get_accounts_assigned_project_ids(db, user)
 

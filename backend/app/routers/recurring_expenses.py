@@ -26,7 +26,7 @@ def _restrict_to_accounts_projects(q, user: User, project_id_column):
     assigned approver of (Project.accounts_approver_id), plus the fallback
     pool of projects with no approver assigned - same rule as claim
     approval routing. Admin/Super Admin keep full visibility."""
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         q = q.join(Project, project_id_column == Project.id).filter(
             or_(Project.accounts_approver_id == user.id, Project.accounts_approver_id.is_(None))
         )

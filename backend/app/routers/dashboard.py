@@ -695,7 +695,7 @@ def accounts_approvals_dashboard(db: Session = Depends(get_db), user: User = Dep
     projects with no approver assigned, and claims with no project at all,
     as a fallback pool). Admin/Super Admin see everything."""
     q = db.query(EmployeeClaim).filter(EmployeeClaim.status == "PENDING_ACCOUNTS_APPROVAL")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         q = (
             q.outerjoin(Project, EmployeeClaim.project_id == Project.id)
             .filter(or_(

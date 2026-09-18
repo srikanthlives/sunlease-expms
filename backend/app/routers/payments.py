@@ -99,7 +99,7 @@ def _apply_filters(
 def _filtered_rows(db: Session, user: User, **filters) -> list[Payment]:
     q = _apply_filters(db.query(Payment), **filters)
     rows = q.order_by(Payment.payment_date.desc(), Payment.id.desc()).all()
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))
         if not assigned:
             return []
@@ -109,7 +109,7 @@ def _filtered_rows(db: Session, user: User, **filters) -> list[Payment]:
 
 @router.post("", response_model=PaymentOut, dependencies=[Depends(require_accounts)])
 def create_payment(payload: PaymentCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))
         for alloc in payload.allocations:
             exp = db.query(Expense).filter(Expense.id == alloc.expense_id).first()
@@ -243,7 +243,7 @@ def get_payment(payment_id: int, db: Session = Depends(get_db), user: User = Dep
     p = db.query(Payment).filter(Payment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_payment_in_scope(db, user, p)
     return _to_out(p)
 
@@ -256,7 +256,7 @@ def update_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depend
     may also edit directly until the payment is verified (see
     POST .../verify), after which they must use POST /edit-requests instead."""
     changes = payload.model_dump(exclude_unset=True)
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         existing = db.query(Payment).filter(Payment.id == payment_id).first()
         if not existing:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
@@ -293,7 +293,7 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db), user: User = 
     p = db.query(Payment).filter(Payment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_payment_in_scope(db, user, p)
         if edit_request_service.is_locked_for_accounts("PAYMENT", p):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This payment has been verified by Admin and can no longer be deleted")
@@ -307,7 +307,7 @@ def cancel_payment(payment_id: int, payload: CancelRequest, db: Session = Depend
     p = db.query(Payment).filter(Payment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         project_scope_service.assert_payment_in_scope(db, user, p)
     payment_service.cancel_payment(db, p, user.id, payload.reason)
     db.commit()

@@ -44,7 +44,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     query = db.query(Project).order_by(Project.name)
-    if user.role.name == RoleName.ACCOUNTS:
+    if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned_ids = project_scope_service.get_accounts_assigned_project_ids(db, user)
         if not assigned_ids:
             return []
@@ -225,12 +225,12 @@ def list_vendors(db: Session = Depends(get_db), user: User = Depends(get_current
     has_links = Vendor.project_links.any()
 
     if project_id is not None:
-        if user.role.name == RoleName.ACCOUNTS:
+        if user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
             assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
             if project_id not in assigned:
                 return []
         q = q.filter(or_(Vendor.project_links.any(VendorProject.project_id == project_id), ~has_links))
-    elif user.role.name == RoleName.ACCOUNTS:
+    elif user.role.name in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
         if assigned:
             q = q.filter(or_(Vendor.project_links.any(VendorProject.project_id.in_(assigned)), ~has_links))

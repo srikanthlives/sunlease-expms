@@ -27,7 +27,7 @@ def _can_view(db: Session, claim: EmployeeClaim, user: User) -> bool:
     role = user.role.name
     if role in (RoleName.SUPER_ADMIN, RoleName.ADMIN, RoleName.VIEWER):
         return True
-    if role == RoleName.ACCOUNTS:
+    if role in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         # Project-scoped: visible if the claim has no project (fallback pool,
         # unchanged) or its project is one this Accounts user is assigned to.
         if claim.project_id is None:
@@ -120,7 +120,7 @@ def _scoped_query(
             # A Manager never sees the company-wide claims list.
             q = q.join(Employee, EmployeeClaim.employee_id == Employee.id).filter(Employee.manager_id == user.employee_id)
 
-    elif role == RoleName.ACCOUNTS:
+    elif role in (RoleName.ACCOUNTS, RoleName.SUPER_ACCOUNTS):
         assigned_project_ids = project_scope_service.get_accounts_assigned_project_ids(db, user)
         if pending_for_me:
             q = (
