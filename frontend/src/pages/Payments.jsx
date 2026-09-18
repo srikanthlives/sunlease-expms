@@ -126,7 +126,7 @@ export default function Payments() {
   function payeeOf(r) {
     if (r.vendor_id) { const v = masters.vendors.find((v) => v.id === r.vendor_id); return v ? vendorLabel(v) : "—"; }
     if (r.employee_id) return masters.employees.find((e) => e.id === r.employee_id)?.employee_name || "—";
-    return "Direct Expense";
+    return "Expense";
   }
 
   return (
@@ -380,7 +380,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
                   className="text-xs border border-ink/15 rounded-md px-2.5 py-1.5 hover:bg-brand-50 disabled:opacity-30"
                   disabled={!!allocations.find((a) => a.expense_id === e.id)}>
                   {e.expense_number}
-                  {e.source_type === "RECURRING_EXPENSE" && <span className="text-brand-700"> (Recurring)</span>}
+                  {e.source_type === "EXPENSE" && e.source_id != null && <span className="text-brand-700"> (Recurring)</span>}
                   {e.supplier_name && <span className="text-ink/50"> · {e.supplier_name}</span>}
                   {" · Balance "}{formatMoney(e.balance_due)}
                   {e.payment_status === "PARTIALLY_PAID" && (

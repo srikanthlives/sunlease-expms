@@ -6,7 +6,7 @@ import { Card, Select, StatusBadge, formatMoney, formatDate } from "../../compon
 import DateRangePicker, { buildPresets } from "../../components/DateRangePicker";
 import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, Wallet, Split } from "lucide-react";
 
-const SOURCE_TYPES = ["DIRECT_EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
+const SOURCE_TYPES = ["EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
 
 function ExpenseRow({ row, expanded, onToggle }) {

@@ -93,14 +93,14 @@ def cancel_expense(db: Session, expense: Expense, actor_id: int, reason: str | N
 
 def delete_expense(db: Session, expense: Expense, actor_id: int):
     """Hard delete - only ever reachable (see routers/expenses.py) for an
-    unverified DIRECT_EXPENSE with no payment allocated to it. Once verified
+    unverified EXPENSE with no payment allocated to it. Once verified
     or once money has moved against it, the record is frozen and must go
     through cancel_expense (or, for a paid expense, the payment must be
     deleted first - see payment_service.delete_payment) instead."""
-    if expense.source_type != SourceType.DIRECT_EXPENSE:
+    if expense.source_type != SourceType.EXPENSE or expense.source_id is not None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Only direct expenses can be deleted here - an invoice-linked expense is deleted from the Invoices page",
+            "Only direct expenses can be deleted here - an invoice-linked or recurring-originated expense is deleted/reversed from its own page",
         )
     if has_payment_allocations(db, expense.id):
         raise HTTPException(

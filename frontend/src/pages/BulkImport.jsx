@@ -119,7 +119,7 @@ export default function BulkImport() {
         </div>
         <p className="text-xs text-ink/50">
           Row Type is <strong>INVOICE</strong> (records an Invoice + its linked Expense — Vendor and Invoice
-          Number required) or <strong>DIRECT</strong> (records a Direct Expense — Supplier Name/Bill Number
+          Number required) or <strong>DIRECT</strong> (records an Expense — Supplier Name/Bill Number
           optional). Project, Vendor, Category, Sub Category and Account are matched by their existing code or
           name — set up any missing Masters entries first. Set Pay Immediately to Y with Payment Date, Account
           and Payment Mode to also record the payment.

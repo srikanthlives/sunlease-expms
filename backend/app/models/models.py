@@ -257,7 +257,7 @@ class Expense(Base):
     category_id = Column(Integer, ForeignKey("expense_categories.id"), nullable=True)
     sub_category_id = Column(Integer, ForeignKey("expense_sub_categories.id"), nullable=True)
 
-    # Free-text payee identity for DIRECT_EXPENSE (no vendor master record
+    # Free-text payee identity for EXPENSE (no vendor master record
     # required) - vendor_id stays null for that source_type.
     supplier_name = Column(String(255), nullable=True)
     bill_number = Column(String(100), nullable=True)

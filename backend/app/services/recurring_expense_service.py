@@ -118,7 +118,7 @@ def accounts_review(
         audit_detail = {"stage": "accounts", "invoice_id": invoice.id}
     else:
         expense = expense_service.create_expense_record(
-            db, source_type=SourceType.RECURRING_EXPENSE, source_id=instance.id, expense_date=instance.occurrence_date,
+            db, source_type=SourceType.EXPENSE, source_id=instance.id, expense_date=instance.occurrence_date,
             project_id=tpl.project_id, vendor_id=None, employee_id=None,
             category_id=tpl.category_id, sub_category_id=tpl.sub_category_id,
             description=description_final,

@@ -122,7 +122,7 @@ def create_direct_expense(payload: DirectExpenseCreate, db: Session = Depends(ge
         project_scope_service.assert_project_in_scope(db, user, payload.project_id)
 
     expense = expense_service.create_expense_record(
-        db, source_type=SourceType.DIRECT_EXPENSE, source_id=None, expense_date=payload.expense_date,
+        db, source_type=SourceType.EXPENSE, source_id=None, expense_date=payload.expense_date,
         project_id=payload.project_id, vendor_id=None, employee_id=None,
         category_id=payload.category_id, sub_category_id=payload.sub_category_id, description=payload.description,
         base_amount=payload.base_amount, gst_amount=payload.gst_amount, other_amount=payload.other_amount,
@@ -341,7 +341,7 @@ def unverify_expense(expense_id: int, db: Session = Depends(get_db), user: User 
 
 @router.delete("/{expense_id}", dependencies=[Depends(require_accounts)])
 def delete_expense(expense_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Hard delete - only for an unverified DIRECT_EXPENSE with no payment
+    """Hard delete - only for an unverified EXPENSE with no payment
     allocated to it (both enforced in expense_service.delete_expense).
     Admin/Super Admin may delete regardless of verification; Accounts is
     locked out once Admin verifies it, same as the edit rules."""

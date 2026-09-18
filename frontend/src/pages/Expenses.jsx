@@ -9,7 +9,7 @@ import EditEntityModal from "../components/EditEntityModal";
 import SubCategorySelect from "../components/SubCategorySelect";
 import { Plus, X, Pencil, Trash2, ShieldCheck, ShieldOff, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
 
-const SOURCE_TYPES = ["DIRECT_EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
+const SOURCE_TYPES = ["EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
 const PAGE_SIZES = [25, 50, 100];
 
@@ -192,7 +192,7 @@ export default function Expenses() {
           <p className="text-sm text-ink/50 mt-0.5">Direct expenses, plus expenses generated from invoices and claims.</p>
         </div>
         {canCreate && (
-          <Button onClick={() => setShowForm(true)}><Plus size={16} /> New Direct Expense</Button>
+          <Button onClick={() => setShowForm(true)}><Plus size={16} /> New Expense</Button>
         )}
       </div>
 
@@ -336,11 +336,11 @@ export default function Expenses() {
             ...(canEdit || isAdmin ? [{
               key: "__actions", header: "",
               render: (r) => {
-                const canDelete = r.status === "ACTIVE" && r.source_type === "DIRECT_EXPENSE"
+                const canDelete = r.status === "ACTIVE" && r.source_type === "EXPENSE" && !r.source_id
                   && Number(r.paid_amount) === 0 && (isAdmin || !r.is_verified);
                 return (
                   <div className="flex items-center gap-0.5 whitespace-nowrap">
-                    {canEdit && r.status === "ACTIVE" && r.source_type === "DIRECT_EXPENSE" && (
+                    {canEdit && r.status === "ACTIVE" && r.source_type === "EXPENSE" && (
                       <IconButton icon={Pencil} title="Edit" onClick={() => setEditingExpense(r)} />
                     )}
                     {canDelete && (
@@ -450,7 +450,7 @@ function ExpenseForm({ masters, onClose, onCreated }) {
   return (
     <Card className="relative">
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
-      <h2 className="font-display font-semibold text-lg mb-4">New Direct Expense</h2>
+      <h2 className="font-display font-semibold text-lg mb-4">New Expense</h2>
       <form onSubmit={submit} className="space-y-4 max-w-2xl">
         <div className="grid grid-cols-2 gap-4">
           <Input label="Date" type="date" value={form.expense_date} onChange={(e) => set("expense_date", e.target.value)} required />

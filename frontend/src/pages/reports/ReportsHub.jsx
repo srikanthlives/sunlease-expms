@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Card } from "../../components/ui";
-import { CalendarDays, TrendingUp, FolderKanban, Building2, Users, GitBranch } from "lucide-react";
+import { CalendarDays, TrendingUp, FolderKanban, Building2, Users, GitBranch, Landmark } from "lucide-react";
 
 const REPORTS = [
   { to: "/reports/daily-register", icon: CalendarDays, title: "Daily Register", desc: "A single day's expenses and payments, broken down by source." },
@@ -9,6 +9,7 @@ const REPORTS = [
   { to: "/reports/vendor-outstanding", icon: Building2, title: "Vendor Outstanding", desc: "What's owed to each vendor, filterable by project and date range." },
   { to: "/reports/employee-wise", icon: Users, title: "Employee-wise", desc: "Claims, approvals and reimbursement status per employee." },
   { to: "/reports/expense-payment-mapping", icon: GitBranch, title: "Expense ↔ Payment Mapping", desc: "Every expense with the payment(s) that settled it, flagging payments split across multiple expenses." },
+  { to: "/reports/account-wise", icon: Landmark, title: "Amount Spent by Account", desc: "Total amount paid out through each bank/cash account, over any date range." },
 ];
 
 export default function ReportsHub() {

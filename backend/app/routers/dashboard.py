@@ -168,7 +168,7 @@ def daily_register(date: str = Query(default=None), db: Session = Depends(get_db
         return _d(q.scalar())
 
     invoices = sum_expense("INVOICE")
-    direct = sum_expense("DIRECT_EXPENSE")
+    direct = sum_expense("EXPENSE")
     claims = sum_expense("EMPLOYEE_CLAIM")
 
     def payment_sum_by_party(party_column):
@@ -283,7 +283,7 @@ def project_wise_report(db: Session = Depends(get_db), user: User = Depends(get_
             q = q.filter(Expense.expense_date <= date_to)
         expenses = q.all()
         invoices = sum(Decimal(e.total_amount) for e in expenses if e.source_type == "INVOICE")
-        direct = sum(Decimal(e.total_amount) for e in expenses if e.source_type == "DIRECT_EXPENSE")
+        direct = sum(Decimal(e.total_amount) for e in expenses if e.source_type == "EXPENSE")
         claims = sum(Decimal(e.total_amount) for e in expenses if e.source_type == "EMPLOYEE_CLAIM")
         total = invoices + direct + claims
         paid = sum(get_paid_amount(db, e.id) for e in expenses)
@@ -463,6 +463,33 @@ def expense_payment_mapping(
     return result
 
 
+@router.get("/reports/account-wise", dependencies=[Depends(require_report_viewer)])
+def account_wise_report(
+    db: Session = Depends(get_db), date_from: str | None = None, date_to: str | None = None,
+):
+    """Total amount paid out through each Account (bank/cash/UPI) within a
+    date range - straight sum of Payment.amount, since Payment has no
+    project_id to scope by (see CLAUDE.md note on this)."""
+    accounts = db.query(Account).all()
+    result = []
+    for acc in accounts:
+        q = db.query(Payment).filter(Payment.account_id == acc.id, Payment.is_cancelled.is_(False))
+        if date_from:
+            q = q.filter(Payment.payment_date >= date_from)
+        if date_to:
+            q = q.filter(Payment.payment_date <= date_to)
+        payments = q.all()
+        total = sum(Decimal(p.amount) for p in payments)
+        if total <= 0 and not payments:
+            continue
+        result.append({
+            "account_id": acc.id, "account_name": acc.account_name, "account_type": acc.account_type,
+            "payment_count": len(payments), "total_paid": _d(total),
+        })
+    result.sort(key=lambda r: r["total_paid"], reverse=True)
+    return result
+
+
 @router.get("/reports/date-bounds", dependencies=[Depends(require_report_viewer)])
 def date_bounds(db: Session = Depends(get_db)):
     """Earliest and latest expense_date with recorded activity, so the
@@ -528,7 +555,7 @@ def trend_report(
     for b in buckets:
         start, end = b["start"], b["end"]
         invoices = expense_sum(start, end, "INVOICE")
-        direct = expense_sum(start, end, "DIRECT_EXPENSE")
+        direct = expense_sum(start, end, "EXPENSE")
         claims = expense_sum(start, end, "EMPLOYEE_CLAIM")
         total_expense = invoices + direct + claims
 

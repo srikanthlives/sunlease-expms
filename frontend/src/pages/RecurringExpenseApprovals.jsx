@@ -80,7 +80,7 @@ export default function RecurringExpenseApprovals() {
           <h1 className="text-2xl font-display font-semibold">Recurring Expense Approvals</h1>
           <p className="text-sm text-ink/50 mt-0.5">
             Bills generated ahead of their due date. Accounts confirms the actual amount and GST/tax breakdown — this
-            posts it directly as an {"Invoice (Vendor Expense) or Direct Expense"}, no Admin approval needed.
+            posts it directly as an {"Invoice (Vendor Expense) or Expense"}, no Admin approval needed.
           </p>
         </div>
         <Button variant="ghost" onClick={load}><RefreshCw size={14} /> Refresh</Button>
@@ -103,7 +103,7 @@ export default function RecurringExpenseApprovals() {
                       <span className="text-sm font-semibold">{row.recurring_expense_name}</span>
                       <StatusBadge status={row.status} />
                       {row.amount_type === "OPEN" && <span className="text-[11px] text-ink/40 italic">Open Amount</span>}
-                      <span className="text-[11px] text-ink/40 italic">{isVendor ? "Records as Invoice" : "Records as Direct Expense"}</span>
+                      <span className="text-[11px] text-ink/40 italic">{isVendor ? "Records as Invoice" : "Records as Expense"}</span>
                     </div>
                     <div className="text-xs text-ink/50 mb-2">
                       Bill date {formatDate(row.occurrence_date)}{row.due_date ? ` · Due ${formatDate(row.due_date)}` : ""} · Project: {projectName(row)} · Payee: {payeeName(row)}

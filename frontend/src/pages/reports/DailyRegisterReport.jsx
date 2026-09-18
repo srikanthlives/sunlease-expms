@@ -63,7 +63,7 @@ export default function DailyRegisterReport() {
             <Card>
               <h3 className="font-display font-semibold mb-3">Expenses by Source</h3>
               <Row label="Invoices" value={data.expenses.invoices} />
-              <Row label="Direct Expenses" value={data.expenses.direct_expenses} />
+              <Row label="Expenses" value={data.expenses.direct_expenses} />
               <Row label="Employee Claims" value={data.expenses.employee_claims} />
               <Row label="Total" value={data.expenses.total} bold />
               {data.expenses.total > 0 && (

@@ -14,6 +14,7 @@ import ProjectWiseReport from "./pages/reports/ProjectWiseReport";
 import VendorOutstandingReport from "./pages/reports/VendorOutstandingReport";
 import EmployeeWiseReport from "./pages/reports/EmployeeWiseReport";
 import ExpensePaymentMappingReport from "./pages/reports/ExpensePaymentMappingReport";
+import AccountWiseReport from "./pages/reports/AccountWiseReport";
 import { EmployeesMaster, VendorsMaster, ProjectsMaster, AccountsMaster, CategoriesMaster } from "./pages/Masters";
 import AuditLogs from "./pages/AuditLogs";
 import UsersAdmin from "./pages/UsersAdmin";
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="reports/vendor-outstanding" element={<VendorOutstandingReport />} />
             <Route path="reports/employee-wise" element={<EmployeeWiseReport />} />
             <Route path="reports/expense-payment-mapping" element={<ExpensePaymentMappingReport />} />
+            <Route path="reports/account-wise" element={<AccountWiseReport />} />
             <Route path="masters/employees" element={<EmployeesMaster />} />
             <Route path="masters/vendors" element={<VendorsMaster />} />
             <Route path="masters/projects" element={<ProjectsMaster />} />

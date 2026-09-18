@@ -113,7 +113,24 @@ def migrate(target_engine: Engine = None, verbose: bool = True) -> dict:
                 if rows:
                     summary["employee_projects_backfilled"] = len(rows)
 
+    # 4. One-off data rename: SourceType.DIRECT_EXPENSE was renamed to
+    # SourceType.EXPENSE (the "Direct Expense" -> "Expense" UI/label rename).
+    # Idempotent and safe to leave in permanently - the UPDATE just no-ops
+    # once every row has already been converted.
+    # Also covers rows created before the fix that made DIRECT-payee recurring
+    # expenses post as (what was then) DIRECT_EXPENSE instead of RECURRING_EXPENSE
+    # - those older rows are still tagged RECURRING_EXPENSE and need the same rename.
+    if "expenses" in existing_tables:
+        with target_engine.begin() as conn:
+            result = conn.execute(text(
+                "UPDATE expenses SET source_type = 'EXPENSE' WHERE source_type IN ('DIRECT_EXPENSE', 'RECURRING_EXPENSE')"
+            ))
+            if result.rowcount:
+                summary["source_type_renamed"] = result.rowcount
+
     if verbose:
+        if summary.get("source_type_renamed"):
+            print(f"Renamed source_type on {summary['source_type_renamed']} expense row(s): DIRECT_EXPENSE -> EXPENSE.")
         if summary.get("employee_projects_backfilled"):
             print(f"Backfilled {summary['employee_projects_backfilled']} employee->project link(s) from the old Employee.project_id column.")
         if not summary["tables_created"] and not summary["columns_added"]:

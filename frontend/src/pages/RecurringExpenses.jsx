@@ -15,7 +15,7 @@ const FREQUENCIES = [
 ];
 
 const PAYEE_TYPES = [
-  { value: "DIRECT", label: "Direct Expense" },
+  { value: "DIRECT", label: "Expense" },
   { value: "VENDOR", label: "Vendor Expense (Invoice)" },
 ];
 

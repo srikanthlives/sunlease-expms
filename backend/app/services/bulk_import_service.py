@@ -256,7 +256,7 @@ def process_workbook(db: Session, file_bytes: bytes, user, dry_run: bool) -> dic
                     r.payment_number = invoice.expense.payments[-1].payment_number if invoice.expense.payments else None
             else:
                 expense = expense_service.create_expense_record(
-                    db, source_type=SourceType.DIRECT_EXPENSE, source_id=None, expense_date=tx_date,
+                    db, source_type=SourceType.EXPENSE, source_id=None, expense_date=tx_date,
                     project_id=project.id if project else None, vendor_id=None, employee_id=None,
                     category_id=category.id, sub_category_id=sub_category.id if sub_category else None,
                     description=description, base_amount=base_amount, gst_amount=gst_amount,
