@@ -1,19 +1,19 @@
 import datetime as dt
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_receivables, require_receivables_view
 from app.db.session import get_db
-from app.models.models import Quotation, ReceivableInvoice, ReceivablePayment, User
+from app.models.models import Quotation, ReceivableInvoice, ReceivablePayment, User, Project
 from app.models.enums import QuotationStatus, ReceivableStatus
 from app.schemas.receivables import (
     QuotationCreate, QuotationOut, QuotationRejectRequest, QuotationConvertRequest,
     ReceivableInvoiceCreate, ReceivableInvoiceOut, ReceivableCancelRequest,
     ReceivablePaymentCreate, ReceivablePaymentUpdate, ReceivablePaymentOut,
 )
-from app.services import receivable_service
+from app.services import receivable_service, receivables_pdf_service
 
 router = APIRouter(prefix="/api/v1/receivables", tags=["receivables"])
 
@@ -75,8 +75,54 @@ def quotations_summary(
     if date_to:
         q = q.filter(Quotation.quotation_date <= date_to)
     rows = q.all()
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
     total_amount = sum((r.total_amount for r in rows), Decimal("0"))
-    return {"count": len(rows), "total_amount": total_amount}
+    return {"count": len(rows), "taxable_amount": taxable_amount, "tax_amount": tax_amount, "total_amount": total_amount}
+
+
+def _describe_quotation_filters(db: Session, *, status_, project_id, date_from, date_to) -> str:
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if status_:
+        parts.append(f"Status: {status_}")
+    if project_id:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        parts.append(f"Project: {p.name if p else project_id}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all quotations)"
+
+
+@router.get("/quotations/export-pdf", dependencies=[Depends(require_receivables_view)])
+def export_quotations_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"), project_id: int | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    """PDF export of the Quotations list - same filters as GET /quotations,
+    always the full filtered result set (not just the current page)."""
+    q = db.query(Quotation)
+    if status_:
+        q = q.filter(Quotation.status == status_)
+    if project_id:
+        q = q.filter(Quotation.project_id == project_id)
+    if date_from:
+        q = q.filter(Quotation.quotation_date >= date_from)
+    if date_to:
+        q = q.filter(Quotation.quotation_date <= date_to)
+    rows = q.order_by(Quotation.id.desc()).all()
+
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
+    total_amount = sum((r.total_amount for r in rows), Decimal("0"))
+    summary = {"count": len(rows), "taxable_amount": taxable_amount, "tax_amount": tax_amount, "total_amount": total_amount}
+    filters_desc = _describe_quotation_filters(db, status_=status_, project_id=project_id, date_from=date_from, date_to=date_to)
+
+    pdf_bytes = receivables_pdf_service.build_quotations_pdf(rows, filters_desc, summary, user.full_name or user.username)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="quotations-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.get("/quotations/{quotation_id}", response_model=QuotationOut, dependencies=[Depends(require_receivables_view)])
@@ -217,9 +263,67 @@ def receivable_invoices_summary(
     if date_to:
         q = q.filter(ReceivableInvoice.invoice_date <= date_to)
     rows = q.all()
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
     total_amount = sum((r.total_amount for r in rows), Decimal("0"))
     paid_amount = sum((receivable_service.get_receivable_paid_amount(db, r.id) for r in rows), Decimal("0"))
-    return {"count": len(rows), "total_amount": total_amount, "paid_amount": paid_amount, "balance_due": total_amount - paid_amount}
+    return {
+        "count": len(rows), "taxable_amount": taxable_amount, "tax_amount": tax_amount,
+        "total_amount": total_amount, "paid_amount": paid_amount, "balance_due": total_amount - paid_amount,
+    }
+
+
+def _describe_invoice_filters(db: Session, *, status_, payment_status, project_id, date_from, date_to) -> str:
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if payment_status:
+        parts.append(f"Payment: {payment_status.replace('_', ' ')}")
+    if status_:
+        parts.append(f"Status: {status_}")
+    if project_id:
+        p = db.query(Project).filter(Project.id == project_id).first()
+        parts.append(f"Project: {p.name if p else project_id}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all invoices)"
+
+
+@router.get("/invoices/export-pdf", dependencies=[Depends(require_receivables_view)])
+def export_receivable_invoices_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"), payment_status: str | None = None,
+    project_id: int | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    """PDF export of the Receivable Invoices list - same filters as
+    GET /invoices, always the full filtered result set."""
+    q = db.query(ReceivableInvoice)
+    if status_:
+        q = q.filter(ReceivableInvoice.status == status_)
+    if payment_status:
+        q = q.filter(ReceivableInvoice.payment_status == payment_status)
+    if project_id:
+        q = q.filter(ReceivableInvoice.project_id == project_id)
+    if date_from:
+        q = q.filter(ReceivableInvoice.invoice_date >= date_from)
+    if date_to:
+        q = q.filter(ReceivableInvoice.invoice_date <= date_to)
+    rows = q.order_by(ReceivableInvoice.id.desc()).all()
+
+    paid_by_id = {r.id: receivable_service.get_receivable_paid_amount(db, r.id) for r in rows}
+    taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
+    tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
+    total_amount = sum((r.total_amount for r in rows), Decimal("0"))
+    paid_amount = sum(paid_by_id.values(), Decimal("0"))
+    summary = {
+        "count": len(rows), "taxable_amount": taxable_amount, "tax_amount": tax_amount,
+        "total_amount": total_amount, "paid_amount": paid_amount, "balance_due": total_amount - paid_amount,
+    }
+    filters_desc = _describe_invoice_filters(db, status_=status_, payment_status=payment_status, project_id=project_id, date_from=date_from, date_to=date_to)
+
+    pdf_bytes = receivables_pdf_service.build_receivable_invoices_pdf(rows, paid_by_id, filters_desc, summary, user.full_name or user.username)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receivable-invoices-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.get("/invoices/{invoice_id}", response_model=ReceivableInvoiceOut, dependencies=[Depends(require_receivables_view)])
@@ -303,6 +407,64 @@ def list_receivable_payments(
     rows = q.order_by(ReceivablePayment.id.desc()).all()
     page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
     return [_payment_out(p) for p in page_rows]
+
+
+def _filtered_payments_query(db: Session, *, account_id, is_cancelled, date_from, date_to):
+    q = db.query(ReceivablePayment)
+    if account_id:
+        q = q.filter(ReceivablePayment.account_id == account_id)
+    if is_cancelled is not None:
+        q = q.filter(ReceivablePayment.is_cancelled == is_cancelled)
+    if date_from:
+        q = q.filter(ReceivablePayment.payment_date >= date_from)
+    if date_to:
+        q = q.filter(ReceivablePayment.payment_date <= date_to)
+    return q
+
+
+@router.get("/payments/summary", dependencies=[Depends(require_receivables_view)])
+def receivable_payments_summary(
+    db: Session = Depends(get_db), account_id: int | None = None, is_cancelled: bool | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    rows = _filtered_payments_query(db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to).all()
+    amount = sum((p.amount for p in rows), Decimal("0"))
+    return {"count": len(rows), "amount": amount}
+
+
+def _describe_payment_filters(db, *, account_id, is_cancelled, date_from, date_to) -> str:
+    from app.models.models import Account
+    parts = []
+    if date_from or date_to:
+        parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
+    if account_id:
+        a = db.query(Account).filter(Account.id == account_id).first()
+        parts.append(f"Account: {a.account_name if a else account_id}")
+    if is_cancelled is not None:
+        parts.append(f"Status: {'Cancelled' if is_cancelled else 'Active'}")
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all payments)"
+
+
+@router.get("/payments/export-pdf", dependencies=[Depends(require_receivables_view)])
+def export_receivable_payments_pdf(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    account_id: int | None = None, is_cancelled: bool | None = None,
+    date_from: dt.date | None = None, date_to: dt.date | None = None,
+):
+    """PDF export of the Payments Received list - same filters as
+    GET /payments, always the full filtered result set."""
+    rows = _filtered_payments_query(
+        db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to,
+    ).order_by(ReceivablePayment.id.desc()).all()
+    amount = sum((p.amount for p in rows), Decimal("0"))
+    summary = {"count": len(rows), "amount": amount}
+    filters_desc = _describe_payment_filters(db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to)
+
+    pdf_bytes = receivables_pdf_service.build_receivable_payments_pdf(rows, filters_desc, summary, user.full_name or user.username)
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receivable-payments-{dt.date.today().isoformat()}.pdf"'},
+    )
 
 
 @router.put("/payments/{payment_id}", response_model=ReceivablePaymentOut, dependencies=[Depends(require_receivables)])

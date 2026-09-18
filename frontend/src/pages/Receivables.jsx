@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { Card, Table, StatusBadge, StatCard, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
-import { Plus, X, Trash2, Pencil, Send, CheckCircle2, XCircle, ArrowRightCircle } from "lucide-react";
+import { Plus, X, Trash2, Pencil, Send, CheckCircle2, XCircle, ArrowRightCircle, FileDown } from "lucide-react";
 
 const QUOTATION_STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "CONVERTED"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
@@ -39,6 +39,10 @@ function DetailModal({ title, statusBadge, onClose, children }) {
       </div>
     </div>
   );
+}
+
+function taxOf(r) {
+  return Number(r.cgst || 0) + Number(r.sgst || 0) + Number(r.igst || 0) + Number(r.other_tax || 0);
 }
 
 function TaxFields({ form, set }) {
@@ -161,15 +165,36 @@ function QuotationsTab({ canManage }) {
   const [convertingId, setConvertingId] = useState(null);
   const [convertForm, setConvertForm] = useState({ invoice_number: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "" });
   const [viewing, setViewing] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
-  function load() {
+  function filterParams() {
     const params = {};
     if (statusFilter) params.status = statusFilter;
     if (projectId) params.project_id = projectId;
-    client.get("/receivables/quotations", { params }).then((res) => setRows(res.data));
-    client.get("/receivables/quotations/summary", { params }).then((res) => setSummary(res.data));
+    return params;
+  }
+  function load() {
+    client.get("/receivables/quotations", { params: filterParams() }).then((res) => setRows(res.data));
+    client.get("/receivables/quotations/summary", { params: filterParams() }).then((res) => setSummary(res.data));
   }
   useEffect(load, [statusFilter, projectId]);
+
+  async function downloadPdf() {
+    setExporting(true);
+    try {
+      const res = await client.get("/receivables/quotations/export-pdf", { params: filterParams(), responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `quotations-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function send(id) { await client.post(`/receivables/quotations/${id}/send`); load(); }
   async function accept(id) { await client.post(`/receivables/quotations/${id}/accept`); load(); }
@@ -237,13 +262,20 @@ function QuotationsTab({ canManage }) {
       )}
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label="Quotations" value={summary.count} />
+          <StatCard label="Taxable Value" value={formatMoney(summary.taxable_amount)} />
+          <StatCard label="GST" value={formatMoney(summary.tax_amount)} />
           <StatCard label="Total Value" value={formatMoney(summary.total_amount)} />
         </div>
       )}
 
       <Card>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+        </div>
         <Table
           columns={[
             { key: "quotation_number", header: "Quotation #", render: (r) => <span className="whitespace-nowrap">{r.quotation_number}</span> },
@@ -265,7 +297,9 @@ function QuotationsTab({ canManage }) {
                 </span>
               ) : "—",
             },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.total_amount)}</span> },
+            { key: "taxable_amount", header: "Taxable Value", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
+            { key: "tax", header: "GST", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
+            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             { key: "receivable_invoice_number", header: "Invoice", render: (r) => <span className="whitespace-nowrap">{r.receivable_invoice_number || "—"}</span> },
             {
@@ -430,6 +464,7 @@ function InvoicesTab({ canManage }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
@@ -448,6 +483,23 @@ function InvoicesTab({ canManage }) {
     client.get("/receivables/invoices/summary", { params: filterParams() }).then((res) => setSummary(res.data));
   }
   useEffect(load, [range.from, range.to, paymentStatus, projectId]);
+
+  async function downloadPdf() {
+    setExporting(true);
+    try {
+      const res = await client.get("/receivables/invoices/export-pdf", { params: filterParams(), responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receivable-invoices-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   async function cancelInvoice(row) {
     const reason = window.prompt(`Cancel ${row.invoice_number}? Reason (optional):`);
@@ -493,8 +545,10 @@ function InvoicesTab({ canManage }) {
       </Card>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <StatCard label="Invoices" value={summary.count} />
+          <StatCard label="Taxable Value" value={formatMoney(summary.taxable_amount)} />
+          <StatCard label="GST" value={formatMoney(summary.tax_amount)} />
           <StatCard label="Total Billed" value={formatMoney(summary.total_amount)} />
           <StatCard label="Received" value={formatMoney(summary.paid_amount)} tone="ok" />
           <StatCard label="Outstanding" value={formatMoney(summary.balance_due)} tone="warn" />
@@ -502,6 +556,11 @@ function InvoicesTab({ canManage }) {
       )}
 
       <Card>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+        </div>
         <Table
           columns={[
             { key: "invoice_number", header: "Invoice #", render: (r) => <span className="whitespace-nowrap">{r.invoice_number}</span> },
@@ -531,7 +590,9 @@ function InvoicesTab({ canManage }) {
                 </span>
               ) : "—",
             },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.total_amount)}</span> },
+            { key: "taxable_amount", header: "Taxable Value", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
+            { key: "tax", header: "GST", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
+            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
             { key: "paid_amount", header: "Received", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.paid_amount)}</span> },
             { key: "balance_due", header: "Balance", render: (r) => <span className="tabular font-medium whitespace-nowrap">{formatMoney(r.balance_due)}</span> },
             { key: "payment_status", header: "Payment", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.payment_status} /></span> },
@@ -782,13 +843,34 @@ function ReceivablePaymentEditForm({ editing, onClose, onSaved }) {
 
 function PaymentsTab({ canManage }) {
   const masters = useMasters();
+  const [bounds, setBounds] = useState(null);
+  const [range, setRange] = useState(defaultMonthRange);
+  const [accountId, setAccountId] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [exporting, setExporting] = useState(false);
 
-  function load() { client.get("/receivables/payments").then((res) => setRows(res.data)); }
-  useEffect(load, []);
+  useEffect(() => {
+    client.get("/reports/date-bounds").then((res) => setBounds(res.data)).catch(() => {});
+  }, []);
+
+  function filterParams() {
+    const params = {};
+    if (range.from) params.date_from = range.from;
+    if (range.to) params.date_to = range.to;
+    if (accountId) params.account_id = accountId;
+    if (statusFilter) params.is_cancelled = statusFilter === "CANCELLED";
+    return params;
+  }
+  function load() {
+    client.get("/receivables/payments", { params: { ...filterParams(), page_size: 500 } }).then((res) => setRows(res.data));
+    client.get("/receivables/payments/summary", { params: filterParams() }).then((res) => setSummary(res.data));
+  }
+  useEffect(load, [range.from, range.to, accountId, statusFilter]);
 
   async function del(row) {
     if (!window.confirm(`Delete ${row.payment_number}? The invoice(s) it was allocated to will fall back to unpaid / partially paid. This cannot be undone.`)) return;
@@ -800,16 +882,62 @@ function PaymentsTab({ canManage }) {
     }
   }
 
+  async function downloadPdf() {
+    setExporting(true);
+    try {
+      const res = await client.get("/receivables/payments/export-pdf", { params: filterParams(), responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `receivable-payments-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        {canManage && <Button onClick={() => setShowForm(true)}><Plus size={16} /> Record Payment</Button>}
-      </div>
+      <Card>
+        <div className="flex flex-wrap items-end gap-4">
+          <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
+        </div>
+        <div className="flex flex-wrap items-end justify-between gap-4 mt-4 pt-4 border-t border-ink/10">
+          <div className="flex items-end gap-4">
+            <Select label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-48">
+              <option value="">All Accounts</option>
+              {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
+            </Select>
+            <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-44">
+              <option value="">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="CANCELLED">Cancelled</option>
+            </Select>
+          </div>
+          {canManage && <Button onClick={() => setShowForm(true)}><Plus size={16} /> Record Payment</Button>}
+        </div>
+      </Card>
+
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <StatCard label="Payments" value={summary.count} />
+          <StatCard label="Total Amount" value={formatMoney(summary.amount)} />
+        </div>
+      )}
+
       {showForm && <ReceivablePaymentForm onClose={() => setShowForm(false)} onCreated={() => { setShowForm(false); load(); }} />}
       {editing && (
         <ReceivablePaymentEditForm editing={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
       )}
       <Card>
+        <div className="flex justify-end gap-2 mb-2">
+          <Button variant="outline" onClick={downloadPdf} disabled={exporting}>
+            <FileDown size={16} /> {exporting ? "Preparing…" : "Download PDF"}
+          </Button>
+        </div>
         <Table
           columns={[
             { key: "payment_number", header: "Payment #", render: (r) => <span className="whitespace-nowrap">{r.payment_number}</span> },
