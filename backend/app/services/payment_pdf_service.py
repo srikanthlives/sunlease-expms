@@ -8,7 +8,10 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+
+from app.services.pdf_number_format import format_inr
+from app.services.pdf_table_helpers import build_styled_table, build_footer_row
 
 # key -> (header label, relative column width unit)
 COLUMN_DEFS = {
@@ -29,7 +32,7 @@ _COLUMN_DEFS_ALL = {**COLUMN_DEFS, "payment_number": ("Payment #", 2.2), "paymen
 
 
 def _money(v) -> str:
-    return f"{float(v or 0):,.2f}"
+    return format_inr(v)
 
 
 def _payee(p) -> str:
@@ -88,36 +91,13 @@ def build_payments_pdf(rows: list, columns: list[str] | None, filters_desc: str,
 
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
     header_row = [Paragraph(_COLUMN_DEFS_ALL[c][0], header_style) for c in cols]
-    data = [header_row] + [[_cell(c, p, cell_style) for c in cols] for p in rows]
+    data_rows = [[_cell(c, p, cell_style) for c in cols] for p in rows]
 
-    total_units = sum(_COLUMN_DEFS_ALL[c][1] for c in cols)
-    avail_width = landscape(A4)[0] - 2 * cm
-    col_widths = [avail_width * (_COLUMN_DEFS_ALL[c][1] / total_units) for c in cols]
-
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-    style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e5e5")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]
-    for i, key in enumerate(cols):
-        if key in MONEY_COLUMNS:
-            style.append(("ALIGN", (i, 1), (i, -1), "RIGHT"))
-    table.setStyle(TableStyle(style))
+    money_col_indexes = [i for i, key in enumerate(cols) if key in MONEY_COLUMNS]
+    col_units = [_COLUMN_DEFS_ALL[c][1] for c in cols]
+    footer_row = build_footer_row(cols, f"{summary['count']} Payment(s)", summary, cell_style) if summary else None
+    table = build_styled_table(header_row, data_rows, col_units, money_col_indexes, footer_row)
     elements.append(table)
-
-    if summary:
-        elements.append(Spacer(1, 12))
-        elements.append(Paragraph(
-            f"<b>{summary['count']} payment(s)</b> &nbsp;&nbsp; Amount: {_money(summary['amount'])}",
-            meta_style,
-        ))
 
     doc.build(elements)
     return buf.getvalue()

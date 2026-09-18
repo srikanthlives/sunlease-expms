@@ -8,7 +8,10 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+
+from app.services.pdf_number_format import format_inr
+from app.services.pdf_table_helpers import build_styled_table
 
 # key -> (header label, relative column width unit)
 COLUMN_DEFS = {
@@ -34,7 +37,7 @@ FREQUENCY_LABELS = {
 
 
 def _money(v) -> str:
-    return f"{float(v or 0):,.2f}"
+    return format_inr(v)
 
 
 def _payee(tpl) -> str:
@@ -90,29 +93,12 @@ def build_recurring_expenses_pdf(rows: list, columns: list[str] | None, filters_
 
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
     header_row = [Paragraph(_COLUMN_DEFS_ALL[c][0], header_style) for c in cols]
-    data = [header_row] + [[_cell(c, tpl, cell_style) for c in cols] for tpl in rows]
+    data_rows = [[_cell(c, tpl, cell_style) for c in cols] for tpl in rows]
 
-    total_units = sum(_COLUMN_DEFS_ALL[c][1] for c in cols)
-    avail_width = landscape(A4)[0] - 2 * cm
-    col_widths = [avail_width * (_COLUMN_DEFS_ALL[c][1] / total_units) for c in cols]
-
-    table = Table(data, colWidths=col_widths, repeatRows=1)
-    style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e5e5")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]
-    table.setStyle(TableStyle(style))
+    col_units = [_COLUMN_DEFS_ALL[c][1] for c in cols]
+    footer_row = [f"{count} Recurring Expense(s)"] + [""] * (len(cols) - 1)
+    table = build_styled_table(header_row, data_rows, col_units, money_col_indexes=[], footer_row=footer_row)
     elements.append(table)
-
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph(f"<b>{count} recurring expense(s)</b>", meta_style))
 
     doc.build(elements)
     return buf.getvalue()

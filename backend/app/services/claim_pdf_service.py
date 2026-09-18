@@ -21,6 +21,8 @@ from reportlab.lib.units import cm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
+
+from app.services.pdf_number_format import format_inr
 from sqlalchemy.orm import Session
 
 from app.models.models import Document, EmployeeClaim
@@ -38,7 +40,7 @@ COL_WIDTHS = {"num": 0.9 * cm, "date": 2.1 * cm, "head": 2.6 * cm, "subhead": 2.
 
 
 def _money(v) -> str:
-    return f"Rs. {float(v or 0):,.2f}"
+    return f"Rs. {format_inr(v)}"
 
 
 def _truncate_to_width(c: canvas.Canvas, text: str, font: str, size: float, max_width: float) -> str:

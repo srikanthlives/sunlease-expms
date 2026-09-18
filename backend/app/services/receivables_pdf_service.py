@@ -13,9 +13,11 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
+from app.services.pdf_number_format import format_inr
+
 
 def _money(v) -> str:
-    return f"{float(v or 0):,.2f}"
+    return format_inr(v)
 
 
 def _tax(row) -> float:
@@ -39,11 +41,16 @@ def _doc_shell(title: str, filters_desc: str, generated_by: str):
     return buf, doc, styles, cell_style, meta_style, elements
 
 
-def _build_table(elements, header_row, data_rows, col_units, money_col_indexes):
+def _build_table(elements, header_row, data_rows, col_units, money_col_indexes, footer_row=None):
+    """`footer_row`, if given, is appended as a bold, shaded subtotal row at
+    the bottom of the table itself - not a separate line of text below it,
+    so it reads as part of the list (like the on-screen Table's `footer`
+    prop) rather than a disconnected summary."""
     total_units = sum(col_units)
     avail_width = landscape(A4)[0] - 2 * cm
     col_widths = [avail_width * (u / total_units) for u in col_units]
-    table = Table([header_row] + data_rows, colWidths=col_widths, repeatRows=1)
+    all_rows = [header_row] + data_rows + ([footer_row] if footer_row else [])
+    table = Table(all_rows, colWidths=col_widths, repeatRows=1)
     style = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -57,6 +64,13 @@ def _build_table(elements, header_row, data_rows, col_units, money_col_indexes):
     ]
     for i in money_col_indexes:
         style.append(("ALIGN", (i, 1), (i, -1), "RIGHT"))
+    if footer_row:
+        last = len(all_rows) - 1
+        style += [
+            ("BACKGROUND", (0, last), (-1, last), colors.HexColor("#e2e8f0")),
+            ("FONTNAME", (0, last), (-1, last), "Helvetica-Bold"),
+            ("LINEABOVE", (0, last), (-1, last), 1, colors.HexColor("#1e293b")),
+        ]
     table.setStyle(TableStyle(style))
     elements.append(table)
 
@@ -64,27 +78,25 @@ def _build_table(elements, header_row, data_rows, col_units, money_col_indexes):
 def build_quotations_pdf(rows: list, filters_desc: str, summary: dict, generated_by: str) -> bytes:
     buf, doc, styles, cell_style, meta_style, elements = _doc_shell("Quotations", filters_desc, generated_by)
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
-    headers = ["Quotation #", "Customer", "Project", "Date", "Valid Until", "Taxable", "GST", "Amount", "Status", "Invoice"]
-    units = [2.2, 3.0, 2.4, 1.8, 1.8, 2.0, 1.8, 2.0, 1.8, 2.2]
+    headers = ["Quotation #", "Customer", "Project", "Date", "Valid Until", "Description", "Taxable", "GST", "Amount", "Status", "Invoice"]
+    units = [2.0, 2.6, 2.0, 1.6, 1.6, 3.4, 1.8, 1.6, 1.8, 1.6, 2.0]
     header_row = [Paragraph(h, header_style) for h in headers]
     data_rows = []
     for r in rows:
         data_rows.append([
             r.quotation_number, Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
             str(r.quotation_date), str(r.valid_until) if r.valid_until else "-",
+            Paragraph(r.description or "-", cell_style),
             _money(r.taxable_amount), _money(_tax(r)), _money(r.total_amount),
             Paragraph((r.status or "").replace("_", " "), cell_style),
             r.receivable_invoice.invoice_number if r.receivable_invoice else "-",
         ])
-    _build_table(elements, header_row, data_rows, units, money_col_indexes=[5, 6, 7])
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph(
-        f"<b>{summary['count']} quotation(s)</b> &nbsp;&nbsp; "
-        f"Taxable Value: {_money(summary['taxable_amount'])} &nbsp;&nbsp; "
-        f"GST: {_money(summary['tax_amount'])} &nbsp;&nbsp; "
-        f"Total Value: {_money(summary['total_amount'])}",
-        meta_style,
-    ))
+    footer_row = [
+        Paragraph(f"{summary['count']} Quotation(s)", cell_style), "", "", "", "", "",
+        _money(summary["taxable_amount"]), _money(summary["tax_amount"]), _money(summary["total_amount"]),
+        "", "",
+    ]
+    _build_table(elements, header_row, data_rows, units, money_col_indexes=[6, 7, 8], footer_row=footer_row)
     doc.build(elements)
     return buf.getvalue()
 
@@ -92,8 +104,8 @@ def build_quotations_pdf(rows: list, filters_desc: str, summary: dict, generated
 def build_receivable_invoices_pdf(rows: list, paid_by_id: dict, filters_desc: str, summary: dict, generated_by: str) -> bytes:
     buf, doc, styles, cell_style, meta_style, elements = _doc_shell("Receivable Invoices", filters_desc, generated_by)
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
-    headers = ["Invoice #", "Customer", "Project", "Quotation", "PO Number", "Date", "Due Date", "Taxable", "GST", "Amount", "Received", "Balance", "Payment", "Status"]
-    units = [2.2, 2.8, 2.2, 1.8, 2.0, 1.8, 1.8, 1.8, 1.6, 1.8, 1.8, 1.8, 1.8, 1.6]
+    headers = ["Invoice #", "Customer", "Project", "Quotation", "PO Number", "Date", "Due Date", "Description", "Taxable", "GST", "Amount", "Received", "Balance", "Payment", "Status"]
+    units = [2.0, 2.4, 1.8, 1.6, 1.8, 1.6, 1.6, 3.0, 1.6, 1.4, 1.6, 1.6, 1.6, 1.6, 1.4]
     header_row = [Paragraph(h, header_style) for h in headers]
     data_rows = []
     for r in rows:
@@ -102,22 +114,18 @@ def build_receivable_invoices_pdf(rows: list, paid_by_id: dict, filters_desc: st
             r.invoice_number, Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
             r.quotation.quotation_number if r.quotation else "-", Paragraph((r.po_number or "-").replace("\n", ", "), cell_style),
             str(r.invoice_date), str(r.due_date) if r.due_date else "-",
+            Paragraph(r.description or "-", cell_style),
             _money(r.taxable_amount), _money(_tax(r)), _money(r.total_amount),
             _money(paid), _money(float(r.total_amount) - float(paid)),
             Paragraph((r.payment_status or "").replace("_", " "), cell_style),
             Paragraph(r.status or "-", cell_style),
         ])
-    _build_table(elements, header_row, data_rows, units, money_col_indexes=[7, 8, 9, 10, 11])
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph(
-        f"<b>{summary['count']} invoice(s)</b> &nbsp;&nbsp; "
-        f"Taxable Value: {_money(summary['taxable_amount'])} &nbsp;&nbsp; "
-        f"GST: {_money(summary['tax_amount'])} &nbsp;&nbsp; "
-        f"Total Billed: {_money(summary['total_amount'])} &nbsp;&nbsp; "
-        f"Received: {_money(summary['paid_amount'])} &nbsp;&nbsp; "
-        f"Outstanding: {_money(summary['balance_due'])}",
-        meta_style,
-    ))
+    footer_row = [
+        Paragraph(f"{summary['count']} Invoice(s)", cell_style), "", "", "", "", "", "", "",
+        _money(summary["taxable_amount"]), _money(summary["tax_amount"]), _money(summary["total_amount"]),
+        _money(summary["paid_amount"]), _money(summary["balance_due"]), "", "",
+    ]
+    _build_table(elements, header_row, data_rows, units, money_col_indexes=[8, 9, 10, 11, 12], footer_row=footer_row)
     doc.build(elements)
     return buf.getvalue()
 
@@ -136,11 +144,10 @@ def build_receivable_payments_pdf(rows: list, filters_desc: str, summary: dict, 
             p.payment_mode, Paragraph(p.reference_number or "-", cell_style), _money(p.amount),
             Paragraph(allocated or "-", cell_style), "CANCELLED" if p.is_cancelled else "ACTIVE",
         ])
-    _build_table(elements, header_row, data_rows, units, money_col_indexes=[5])
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph(
-        f"<b>{summary['count']} payment(s)</b> &nbsp;&nbsp; Amount: {_money(summary['amount'])}",
-        meta_style,
-    ))
+    footer_row = [
+        Paragraph(f"{summary['count']} Payment(s)", cell_style), "", "", "",
+        "", _money(summary["amount"]), "", "",
+    ]
+    _build_table(elements, header_row, data_rows, units, money_col_indexes=[5], footer_row=footer_row)
     doc.build(elements)
     return buf.getvalue()
