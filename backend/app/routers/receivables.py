@@ -7,15 +7,56 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_receivables, require_receivables_view
 from app.db.session import get_db
 from app.models.models import Quotation, ReceivableInvoice, ReceivablePayment, User, Project
-from app.models.enums import QuotationStatus, ReceivableStatus
+from app.models.enums import QuotationStatus, ReceivableStatus, RoleName
 from app.schemas.receivables import (
     QuotationCreate, QuotationOut, QuotationRejectRequest, QuotationConvertRequest,
     ReceivableInvoiceCreate, ReceivableInvoiceOut, ReceivableCancelRequest,
     ReceivablePaymentCreate, ReceivablePaymentUpdate, ReceivablePaymentOut,
 )
-from app.services import receivable_service, receivables_pdf_service
+from app.services import receivable_service, receivables_pdf_service, project_scope_service
 
 router = APIRouter(prefix="/api/v1/receivables", tags=["receivables"])
+
+# SUPER_ACCOUNTS is project-restricted here exactly like it is everywhere
+# else (see core/deps.py, project_scope_service) - it only sees/acts on
+# Receivables whose project is one it's been assigned to via the same
+# project_accounts_users mechanism. ADMIN/SUPER_ADMIN/VIEWER are unaffected
+# (VIEWER keeps its usual company-wide read access).
+
+
+def _scope_quotations(q, db: Session, user: User):
+    if user.role.name != RoleName.SUPER_ACCOUNTS:
+        return q
+    assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+    return q.filter(Quotation.project_id.in_(assigned)) if assigned else q.filter(False)
+
+
+def _scope_receivable_invoices(q, db: Session, user: User):
+    if user.role.name != RoleName.SUPER_ACCOUNTS:
+        return q
+    assigned = project_scope_service.get_accounts_assigned_project_ids(db, user)
+    return q.filter(ReceivableInvoice.project_id.in_(assigned)) if assigned else q.filter(False)
+
+
+def _receivable_payment_project_ids(payment: ReceivablePayment) -> list[int]:
+    return [a.invoice.project_id for a in payment.allocations if a.invoice and a.invoice.project_id is not None]
+
+
+def _scope_receivable_payment_rows(rows: list[ReceivablePayment], db: Session, user: User) -> list[ReceivablePayment]:
+    if user.role.name != RoleName.SUPER_ACCOUNTS:
+        return rows
+    assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))
+    if not assigned:
+        return []
+    return [p for p in rows if assigned & set(_receivable_payment_project_ids(p))]
+
+
+def _assert_receivable_payment_in_scope(payment: ReceivablePayment, db: Session, user: User):
+    if user.role.name != RoleName.SUPER_ACCOUNTS:
+        return
+    assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))
+    if not assigned & set(_receivable_payment_project_ids(payment)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned to this payment's project(s)")
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +72,8 @@ def _quotation_out(q: Quotation) -> QuotationOut:
 
 @router.post("/quotations", response_model=QuotationOut, dependencies=[Depends(require_receivables)])
 def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     q = receivable_service.create_quotation(db, **payload.model_dump(), created_by=user.id)
     db.commit()
     db.refresh(q)
@@ -39,7 +82,8 @@ def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db), us
 
 @router.get("/quotations", response_model=list[QuotationOut], dependencies=[Depends(require_receivables_view)])
 def list_quotations(
-    db: Session = Depends(get_db), status_: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"),
     project_id: int | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=500),
@@ -53,6 +97,7 @@ def list_quotations(
         q = q.filter(Quotation.quotation_date >= date_from)
     if date_to:
         q = q.filter(Quotation.quotation_date <= date_to)
+    q = _scope_quotations(q, db, user)
     rows = q.order_by(Quotation.id.desc()).all()
     total = len(rows)
     page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
@@ -61,7 +106,8 @@ def list_quotations(
 
 @router.get("/quotations/summary", dependencies=[Depends(require_receivables_view)])
 def quotations_summary(
-    db: Session = Depends(get_db), status_: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"),
     project_id: int | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
@@ -74,6 +120,7 @@ def quotations_summary(
         q = q.filter(Quotation.quotation_date >= date_from)
     if date_to:
         q = q.filter(Quotation.quotation_date <= date_to)
+    q = _scope_quotations(q, db, user)
     rows = q.all()
     taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
     tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
@@ -90,7 +137,7 @@ def _describe_quotation_filters(db: Session, *, status_, project_id, date_from, 
     if project_id:
         p = db.query(Project).filter(Project.id == project_id).first()
         parts.append(f"Project: {p.name if p else project_id}")
-    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all quotations)"
+    return "Filters: " + " | ".join(parts) if parts else "Filters: none (all proforma invoices)"
 
 
 @router.get("/quotations/export-pdf", dependencies=[Depends(require_receivables_view)])
@@ -110,6 +157,7 @@ def export_quotations_pdf(
         q = q.filter(Quotation.quotation_date >= date_from)
     if date_to:
         q = q.filter(Quotation.quotation_date <= date_to)
+    q = _scope_quotations(q, db, user)
     rows = q.order_by(Quotation.id.desc()).all()
 
     taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
@@ -121,15 +169,17 @@ def export_quotations_pdf(
     pdf_bytes = receivables_pdf_service.build_quotations_pdf(rows, filters_desc, summary, user.full_name or user.username)
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="quotations-{dt.date.today().isoformat()}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="proforma-invoices-{dt.date.today().isoformat()}.pdf"'},
     )
 
 
 @router.get("/quotations/{quotation_id}", response_model=QuotationOut, dependencies=[Depends(require_receivables_view)])
-def get_quotation(quotation_id: int, db: Session = Depends(get_db)):
+def get_quotation(quotation_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     return _quotation_out(q)
 
 
@@ -137,7 +187,10 @@ def get_quotation(quotation_id: int, db: Session = Depends(get_db)):
 def update_quotation(quotation_id: int, payload: QuotationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
+        project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     receivable_service.update_quotation(db, q, **payload.model_dump(), actor_id=user.id)
     db.commit()
     db.refresh(q)
@@ -148,17 +201,21 @@ def update_quotation(quotation_id: int, payload: QuotationCreate, db: Session = 
 def delete_quotation(quotation_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     receivable_service.delete_quotation(db, q, user.id)
     db.commit()
-    return {"detail": "Quotation deleted"}
+    return {"detail": "Proforma Invoice deleted"}
 
 
 @router.post("/quotations/{quotation_id}/send", response_model=QuotationOut, dependencies=[Depends(require_receivables)])
 def send_quotation(quotation_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     receivable_service.send_quotation(db, q, user.id)
     db.commit()
     db.refresh(q)
@@ -169,7 +226,9 @@ def send_quotation(quotation_id: int, db: Session = Depends(get_db), user: User 
 def accept_quotation(quotation_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     receivable_service.accept_quotation(db, q, user.id)
     db.commit()
     db.refresh(q)
@@ -180,7 +239,9 @@ def accept_quotation(quotation_id: int, db: Session = Depends(get_db), user: Use
 def reject_quotation(quotation_id: int, payload: QuotationRejectRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     receivable_service.reject_quotation(db, q, user.id, payload.reason)
     db.commit()
     db.refresh(q)
@@ -191,7 +252,9 @@ def reject_quotation(quotation_id: int, payload: QuotationRejectRequest, db: Ses
 def convert_quotation(quotation_id: int, payload: QuotationConvertRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = db.query(Quotation).filter(Quotation.id == quotation_id).first()
     if not q:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quotation not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proforma Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, q.project_id)
     inv = receivable_service.convert_quotation(
         db, q, user.id, invoice_number=payload.invoice_number, invoice_date=payload.invoice_date, due_date=payload.due_date,
     )
@@ -216,6 +279,8 @@ def _invoice_out(db: Session, inv: ReceivableInvoice) -> ReceivableInvoiceOut:
 
 @router.post("/invoices", response_model=ReceivableInvoiceOut, dependencies=[Depends(require_receivables)])
 def create_receivable_invoice(payload: ReceivableInvoiceCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     inv = receivable_service.create_receivable_invoice(db, **payload.model_dump(), quotation_id=None, created_by=user.id)
     db.commit()
     db.refresh(inv)
@@ -224,7 +289,8 @@ def create_receivable_invoice(payload: ReceivableInvoiceCreate, db: Session = De
 
 @router.get("/invoices", response_model=list[ReceivableInvoiceOut], dependencies=[Depends(require_receivables_view)])
 def list_receivable_invoices(
-    db: Session = Depends(get_db), status_: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"),
     payment_status: str | None = None, project_id: int | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=500),
@@ -240,6 +306,7 @@ def list_receivable_invoices(
         q = q.filter(ReceivableInvoice.invoice_date >= date_from)
     if date_to:
         q = q.filter(ReceivableInvoice.invoice_date <= date_to)
+    q = _scope_receivable_invoices(q, db, user)
     rows = q.order_by(ReceivableInvoice.id.desc()).all()
     page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
     return [_invoice_out(db, r) for r in page_rows]
@@ -247,7 +314,8 @@ def list_receivable_invoices(
 
 @router.get("/invoices/summary", dependencies=[Depends(require_receivables_view)])
 def receivable_invoices_summary(
-    db: Session = Depends(get_db), status_: str | None = Query(None, alias="status"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    status_: str | None = Query(None, alias="status"),
     payment_status: str | None = None, project_id: int | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
@@ -262,6 +330,7 @@ def receivable_invoices_summary(
         q = q.filter(ReceivableInvoice.invoice_date >= date_from)
     if date_to:
         q = q.filter(ReceivableInvoice.invoice_date <= date_to)
+    q = _scope_receivable_invoices(q, db, user)
     rows = q.all()
     taxable_amount = sum((r.taxable_amount for r in rows), Decimal("0"))
     tax_amount = sum((r.cgst + r.sgst + r.igst + r.other_tax for r in rows), Decimal("0"))
@@ -306,6 +375,7 @@ def export_receivable_invoices_pdf(
         q = q.filter(ReceivableInvoice.invoice_date >= date_from)
     if date_to:
         q = q.filter(ReceivableInvoice.invoice_date <= date_to)
+    q = _scope_receivable_invoices(q, db, user)
     rows = q.order_by(ReceivableInvoice.id.desc()).all()
 
     paid_by_id = {r.id: receivable_service.get_receivable_paid_amount(db, r.id) for r in rows}
@@ -327,10 +397,12 @@ def export_receivable_invoices_pdf(
 
 
 @router.get("/invoices/{invoice_id}", response_model=ReceivableInvoiceOut, dependencies=[Depends(require_receivables_view)])
-def get_receivable_invoice(invoice_id: int, db: Session = Depends(get_db)):
+def get_receivable_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     inv = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, inv.project_id)
     return _invoice_out(db, inv)
 
 
@@ -339,6 +411,9 @@ def update_receivable_invoice(invoice_id: int, payload: ReceivableInvoiceCreate,
     inv = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, inv.project_id)
+        project_scope_service.assert_project_in_scope(db, user, payload.project_id)
     receivable_service.update_receivable_invoice(db, inv, **payload.model_dump(), actor_id=user.id)
     db.commit()
     db.refresh(inv)
@@ -350,6 +425,8 @@ def delete_receivable_invoice(invoice_id: int, db: Session = Depends(get_db), us
     inv = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, inv.project_id)
     receivable_service.delete_receivable_invoice(db, inv, user.id)
     db.commit()
     return {"detail": "Invoice deleted"}
@@ -360,6 +437,8 @@ def cancel_receivable_invoice(invoice_id: int, payload: ReceivableCancelRequest,
     inv = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == invoice_id).first()
     if not inv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        project_scope_service.assert_project_in_scope(db, user, inv.project_id)
     receivable_service.cancel_receivable_invoice(db, inv, user.id, payload.reason)
     db.commit()
     db.refresh(inv)
@@ -379,6 +458,12 @@ def _payment_out(p: ReceivablePayment) -> ReceivablePaymentOut:
 
 @router.post("/payments", response_model=ReceivablePaymentOut, dependencies=[Depends(require_receivables)])
 def create_receivable_payment(payload: ReceivablePaymentCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    if user.role.name == RoleName.SUPER_ACCOUNTS:
+        assigned = set(project_scope_service.get_accounts_assigned_project_ids(db, user))
+        for alloc in payload.allocations:
+            inv = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == alloc.receivable_invoice_id).first()
+            if not inv or inv.project_id not in assigned:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned to this payment's project(s)")
     payment = receivable_service.create_receivable_payment_with_allocations(
         db, payment_date=payload.payment_date, account_id=payload.account_id, payment_mode=payload.payment_mode,
         reference_number=payload.reference_number, remarks=payload.remarks,
@@ -391,20 +476,13 @@ def create_receivable_payment(payload: ReceivablePaymentCreate, db: Session = De
 
 @router.get("/payments", response_model=list[ReceivablePaymentOut], dependencies=[Depends(require_receivables_view)])
 def list_receivable_payments(
-    db: Session = Depends(get_db), account_id: int | None = None, is_cancelled: bool | None = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    account_id: int | None = None, is_cancelled: bool | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=500),
 ):
-    q = db.query(ReceivablePayment)
-    if account_id:
-        q = q.filter(ReceivablePayment.account_id == account_id)
-    if is_cancelled is not None:
-        q = q.filter(ReceivablePayment.is_cancelled == is_cancelled)
-    if date_from:
-        q = q.filter(ReceivablePayment.payment_date >= date_from)
-    if date_to:
-        q = q.filter(ReceivablePayment.payment_date <= date_to)
-    rows = q.order_by(ReceivablePayment.id.desc()).all()
+    rows = _filtered_payments_query(db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to).order_by(ReceivablePayment.id.desc()).all()
+    rows = _scope_receivable_payment_rows(rows, db, user)
     page_rows = rows[(page - 1) * page_size: (page - 1) * page_size + page_size]
     return [_payment_out(p) for p in page_rows]
 
@@ -424,10 +502,12 @@ def _filtered_payments_query(db: Session, *, account_id, is_cancelled, date_from
 
 @router.get("/payments/summary", dependencies=[Depends(require_receivables_view)])
 def receivable_payments_summary(
-    db: Session = Depends(get_db), account_id: int | None = None, is_cancelled: bool | None = None,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    account_id: int | None = None, is_cancelled: bool | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
     rows = _filtered_payments_query(db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to).all()
+    rows = _scope_receivable_payment_rows(rows, db, user)
     amount = sum((p.amount for p in rows), Decimal("0"))
     return {"count": len(rows), "amount": amount}
 
@@ -456,6 +536,7 @@ def export_receivable_payments_pdf(
     rows = _filtered_payments_query(
         db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to,
     ).order_by(ReceivablePayment.id.desc()).all()
+    rows = _scope_receivable_payment_rows(rows, db, user)
     amount = sum((p.amount for p in rows), Decimal("0"))
     summary = {"count": len(rows), "amount": amount}
     filters_desc = _describe_payment_filters(db, account_id=account_id, is_cancelled=is_cancelled, date_from=date_from, date_to=date_to)
@@ -472,6 +553,7 @@ def update_receivable_payment(payment_id: int, payload: ReceivablePaymentUpdate,
     p = db.query(ReceivablePayment).filter(ReceivablePayment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
+    _assert_receivable_payment_in_scope(p, db, user)
     receivable_service.update_receivable_payment(
         db, p, payment_date=payload.payment_date, account_id=payload.account_id, payment_mode=payload.payment_mode,
         reference_number=payload.reference_number, remarks=payload.remarks, actor_id=user.id,
@@ -486,6 +568,7 @@ def delete_receivable_payment(payment_id: int, db: Session = Depends(get_db), us
     p = db.query(ReceivablePayment).filter(ReceivablePayment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
+    _assert_receivable_payment_in_scope(p, db, user)
     receivable_service.delete_receivable_payment(db, p, user.id)
     db.commit()
     return {"detail": "Payment deleted"}
@@ -496,6 +579,7 @@ def cancel_receivable_payment(payment_id: int, payload: ReceivableCancelRequest,
     p = db.query(ReceivablePayment).filter(ReceivablePayment.id == payment_id).first()
     if not p:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment not found")
+    _assert_receivable_payment_in_scope(p, db, user)
     receivable_service.cancel_receivable_payment(db, p, user.id, payload.reason)
     db.commit()
     db.refresh(p)

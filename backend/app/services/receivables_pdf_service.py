@@ -76,23 +76,23 @@ def _build_table(elements, header_row, data_rows, col_units, money_col_indexes, 
 
 
 def build_quotations_pdf(rows: list, filters_desc: str, summary: dict, generated_by: str) -> bytes:
-    buf, doc, styles, cell_style, meta_style, elements = _doc_shell("Quotations", filters_desc, generated_by)
+    buf, doc, styles, cell_style, meta_style, elements = _doc_shell("Proforma Invoices", filters_desc, generated_by)
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
-    headers = ["Quotation #", "Customer", "Project", "Date", "Valid Until", "Description", "Taxable", "GST", "Amount", "Status", "Invoice"]
-    units = [2.0, 2.6, 2.0, 1.6, 1.6, 3.4, 1.8, 1.6, 1.8, 1.6, 2.0]
+    headers = ["Proforma #", "Customer", "Project", "Date", "Valid Until", "Description", "Taxable", "GST", "Amount", "Status", "Invoice"]
+    units = [2.2, 2.6, 2.0, 1.6, 1.6, 3.2, 1.8, 1.6, 1.8, 1.6, 2.2]
     header_row = [Paragraph(h, header_style) for h in headers]
     data_rows = []
     for r in rows:
         data_rows.append([
-            r.quotation_number, Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
+            Paragraph(r.quotation_number, cell_style), Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
             str(r.quotation_date), str(r.valid_until) if r.valid_until else "-",
             Paragraph(r.description or "-", cell_style),
             _money(r.taxable_amount), _money(_tax(r)), _money(r.total_amount),
             Paragraph((r.status or "").replace("_", " "), cell_style),
-            r.receivable_invoice.invoice_number if r.receivable_invoice else "-",
+            Paragraph(r.receivable_invoice.invoice_number if r.receivable_invoice else "-", cell_style),
         ])
     footer_row = [
-        Paragraph(f"{summary['count']} Quotation(s)", cell_style), "", "", "", "", "",
+        Paragraph(f"{summary['count']} Proforma Invoice(s)", cell_style), "", "", "", "", "",
         _money(summary["taxable_amount"]), _money(summary["tax_amount"]), _money(summary["total_amount"]),
         "", "",
     ]
@@ -104,15 +104,15 @@ def build_quotations_pdf(rows: list, filters_desc: str, summary: dict, generated
 def build_receivable_invoices_pdf(rows: list, paid_by_id: dict, filters_desc: str, summary: dict, generated_by: str) -> bytes:
     buf, doc, styles, cell_style, meta_style, elements = _doc_shell("Receivable Invoices", filters_desc, generated_by)
     header_style = ParagraphStyle("colhead", parent=styles["Normal"], fontSize=7, leading=9, textColor=colors.white, fontName="Helvetica-Bold")
-    headers = ["Invoice #", "Customer", "Project", "Quotation", "PO Number", "Date", "Due Date", "Description", "Taxable", "GST", "Amount", "Received", "Balance", "Payment", "Status"]
-    units = [2.0, 2.4, 1.8, 1.6, 1.8, 1.6, 1.6, 3.0, 1.6, 1.4, 1.6, 1.6, 1.6, 1.6, 1.4]
+    headers = ["Invoice #", "Customer", "Project", "Proforma #", "PO Number", "Date", "Due Date", "Description", "Taxable", "GST", "Amount", "Received", "Balance", "Payment", "Status"]
+    units = [2.2, 2.4, 1.8, 2.0, 1.8, 1.6, 1.6, 2.8, 1.6, 1.4, 1.6, 1.6, 1.6, 1.6, 1.4]
     header_row = [Paragraph(h, header_style) for h in headers]
     data_rows = []
     for r in rows:
         paid = paid_by_id.get(r.id, 0)
         data_rows.append([
-            r.invoice_number, Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
-            r.quotation.quotation_number if r.quotation else "-", Paragraph((r.po_number or "-").replace("\n", ", "), cell_style),
+            Paragraph(r.invoice_number, cell_style), Paragraph(r.customer_name, cell_style), Paragraph(r.project.name if r.project else "-", cell_style),
+            Paragraph(r.quotation.quotation_number if r.quotation else "-", cell_style), Paragraph((r.po_number or "-").replace("\n", ", "), cell_style),
             str(r.invoice_date), str(r.due_date) if r.due_date else "-",
             Paragraph(r.description or "-", cell_style),
             _money(r.taxable_amount), _money(_tax(r)), _money(r.total_amount),
@@ -140,9 +140,9 @@ def build_receivable_payments_pdf(rows: list, filters_desc: str, summary: dict, 
     for p in rows:
         allocated = ", ".join((a.invoice.invoice_number if a.invoice else f"#{a.receivable_invoice_id}") for a in p.allocations)
         data_rows.append([
-            p.payment_number, str(p.payment_date), Paragraph(p.account.account_name if p.account else "-", cell_style),
-            p.payment_mode, Paragraph(p.reference_number or "-", cell_style), _money(p.amount),
-            Paragraph(allocated or "-", cell_style), "CANCELLED" if p.is_cancelled else "ACTIVE",
+            Paragraph(p.payment_number, cell_style), str(p.payment_date), Paragraph(p.account.account_name if p.account else "-", cell_style),
+            Paragraph(p.payment_mode, cell_style), Paragraph(p.reference_number or "-", cell_style), _money(p.amount),
+            Paragraph(allocated or "-", cell_style), Paragraph("CANCELLED" if p.is_cancelled else "ACTIVE", cell_style),
         ])
     footer_row = [
         Paragraph(f"{summary['count']} Payment(s)", cell_style), "", "", "",

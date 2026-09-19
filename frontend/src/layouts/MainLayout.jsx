@@ -28,7 +28,7 @@ const NAV = [
   {
     section: "Receivables",
     roles: ["ADMIN", "SUPER_ADMIN", "SUPER_ACCOUNTS", "VIEWER"],
-    items: [{ to: "/receivables", label: "Quotations & Invoices", icon: FileStack }],
+    items: [{ to: "/receivables", label: "Proforma & Invoices", icon: FileStack }],
   },
   {
     section: "My Work",

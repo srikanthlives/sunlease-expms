@@ -11,7 +11,7 @@ const QUOTATION_STATUSES = ["DRAFT", "SENT", "ACCEPTED", "REJECTED", "CONVERTED"
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
 const PAYMENT_MODES = ["NEFT", "RTGS", "IMPS", "UPI", "CASH", "CHEQUE"];
 const TABS = [
-  { key: "quotations", label: "Quotations" },
+  { key: "quotations", label: "Proforma Invoices" },
   { key: "invoices", label: "Receivable Invoices" },
   { key: "payments", label: "Payments Received" },
 ];
@@ -66,7 +66,7 @@ function QuotationDetailModal({ quotation, canManage, onClose }) {
       <div className="grid grid-cols-2 gap-4">
         <DetailRow label="Customer" value={quotation.customer_name} />
         <DetailRow label="Project" value={quotation.project_name} />
-        <DetailRow label="Quotation Date" value={formatDate(quotation.quotation_date)} />
+        <DetailRow label="Proforma Date" value={formatDate(quotation.quotation_date)} />
         <DetailRow label="Valid Until" value={quotation.valid_until ? formatDate(quotation.valid_until) : "—"} />
       </div>
       {quotation.description && <DetailRow label="Description" value={quotation.description} />}
@@ -85,7 +85,7 @@ function QuotationDetailModal({ quotation, canManage, onClose }) {
       )}
       <div>
         <div className="text-[11px] uppercase tracking-wide text-ink/40 font-medium mb-1.5">Attachments</div>
-        <Attachments documentType="QUOTATION" quotationId={quotation.id} readOnly={!canManage} label="Quotation / Proof" />
+        <Attachments documentType="QUOTATION" quotationId={quotation.id} readOnly={!canManage} label="Proforma Invoice / Proof" />
       </div>
     </DetailModal>
   );
@@ -129,23 +129,23 @@ function QuotationForm({ editing, onClose, onSaved }) {
   return (
     <Card className="relative">
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
-      <h2 className="font-display font-semibold text-lg mb-4">{editing ? `Edit ${editing.quotation_number}` : "New Quotation"}</h2>
+      <h2 className="font-display font-semibold text-lg mb-4">{editing ? `Edit ${editing.quotation_number}` : "New Proforma Invoice"}</h2>
       <form onSubmit={submit} className="space-y-4 max-w-2xl">
         <div className="grid grid-cols-2 gap-4">
-          <Input label="Quotation Number" value={form.quotation_number} onChange={(e) => set("quotation_number", e.target.value)} required />
+          <Input label="Proforma Invoice Number" value={form.quotation_number} onChange={(e) => set("quotation_number", e.target.value)} required />
           <Input label="Customer Name" value={form.customer_name} onChange={(e) => set("customer_name", e.target.value)} required />
           <Select label="Project" value={form.project_id} onChange={(e) => set("project_id", e.target.value)}>
             <option value="">— none —</option>
             {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
-          <Input label="Quotation Date" type="date" value={form.quotation_date} onChange={(e) => set("quotation_date", e.target.value)} required />
+          <Input label="Proforma Date" type="date" value={form.quotation_date} onChange={(e) => set("quotation_date", e.target.value)} required />
           <Input label="Valid Until" type="date" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} />
         </div>
         <Input label="Description" value={form.description || ""} onChange={(e) => set("description", e.target.value)} />
         <TaxFields form={form} set={set} />
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save Quotation"}</Button>
+          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save Proforma Invoice"}</Button>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </form>
@@ -240,7 +240,7 @@ function QuotationsTab({ canManage }) {
             {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </Select>
         </div>
-        {canManage && <Button onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={16} /> New Quotation</Button>}
+        {canManage && <Button onClick={() => { setEditing(null); setShowForm(true); }}><Plus size={16} /> New Proforma Invoice</Button>}
       </div>
 
       {showForm && (
@@ -263,7 +263,7 @@ function QuotationsTab({ canManage }) {
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Quotations" value={summary.count} />
+          <StatCard label="Proforma Invoices" value={summary.count} />
           <StatCard label="Taxable Value" value={formatMoney(summary.taxable_amount)} />
           <StatCard label="GST" value={formatMoney(summary.tax_amount)} />
           <StatCard label="Total Value" value={formatMoney(summary.total_amount)} />
@@ -278,7 +278,7 @@ function QuotationsTab({ canManage }) {
         </div>
         <Table
           columns={[
-            { key: "quotation_number", header: "Quotation #", render: (r) => <span className="whitespace-nowrap">{r.quotation_number}</span> },
+            { key: "quotation_number", header: "Proforma #", render: (r) => <span className="whitespace-nowrap">{r.quotation_number}</span> },
             {
               key: "customer_name", header: "Customer",
               render: (r) => <span title={r.customer_name} className="block max-w-[200px] truncate">{r.customer_name}</span>,
@@ -322,7 +322,7 @@ function QuotationsTab({ canManage }) {
           ]}
           rows={rows}
           onRowClick={(r) => setViewing(r)}
-          empty="No quotations yet."
+          empty="No proforma invoices yet."
         />
       </Card>
 
@@ -347,7 +347,7 @@ function ReceivableInvoiceDetailModal({ invoice, canManage, onClose }) {
         <DetailRow label="Project" value={invoice.project_name} />
         <DetailRow label="Invoice Date" value={formatDate(invoice.invoice_date)} />
         <DetailRow label="Due Date" value={invoice.due_date ? formatDate(invoice.due_date) : "—"} />
-        {invoice.quotation_number && <DetailRow label="From Quotation" value={invoice.quotation_number} />}
+        {invoice.quotation_number && <DetailRow label="From Proforma Invoice" value={invoice.quotation_number} />}
         <DetailRow label="Payment Status" value={<StatusBadge status={invoice.payment_status} />} />
       </div>
       {invoice.po_number && <DetailRow label="PO Number(s)" value={<span className="whitespace-pre-wrap">{invoice.po_number}</span>} />}
@@ -573,7 +573,7 @@ function InvoicesTab({ canManage }) {
               render: (r) => { const text = r.project_name || "—"; return <span title={text} className="block max-w-[160px] truncate">{text}</span>; },
             },
             {
-              key: "quotation_number", header: "Quotation",
+              key: "quotation_number", header: "Proforma #",
               render: (r) => r.quotation_number ? <span className="text-xs text-ink/60 whitespace-nowrap">{r.quotation_number}</span> : "—",
             },
             {
@@ -990,7 +990,7 @@ export default function Receivables() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-display font-semibold">Receivables</h1>
-        <p className="text-sm text-ink/50 mt-0.5">Quotations and invoices issued to customers, tracked through to payment.</p>
+        <p className="text-sm text-ink/50 mt-0.5">Proforma invoices and invoices issued to customers, tracked through to payment.</p>
       </div>
 
       <div className="flex gap-1 border-b border-ink/10">
