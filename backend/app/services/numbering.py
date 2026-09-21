@@ -7,10 +7,23 @@ from app.models.models import Expense, Payment, EmployeeClaim, Quotation, Receiv
 
 
 def _next_number(db: Session, model, column, prefix: str) -> str:
+    """Sequence must be derived from the highest existing number, not a row
+    COUNT - deleting any row (e.g. an invoice-linked expense removed via
+    invoice deletion) shrinks the count without freeing its number, so a
+    COUNT-based next value can collide with a still-existing later row and
+    raise a UNIQUE constraint IntegrityError on insert."""
     year = dt.datetime.utcnow().strftime("%y")
+    prefix_len = len(f"{prefix}-{year}")
     like_pattern = f"{prefix}-{year}%"
-    count = db.query(func.count()).select_from(model).filter(column.like(like_pattern)).scalar() or 0
-    seq = count + 1
+    existing = db.query(column).filter(column.like(like_pattern)).all()
+    max_seq = 0
+    for (value,) in existing:
+        try:
+            seq = int(value[prefix_len:])
+        except (TypeError, ValueError):
+            continue
+        max_seq = max(max_seq, seq)
+    seq = max_seq + 1
     return f"{prefix}-{year}{seq:05d}"
 
 
