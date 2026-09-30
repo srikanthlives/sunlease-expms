@@ -22,23 +22,23 @@ FIELD_TYPES = {
         "expense_date": "date", "project_id": "int", "vendor_id": "int", "employee_id": "int",
         "category_id": "int", "sub_category_id": "int", "description": "str",
         "supplier_name": "str", "bill_number": "str",
-        "base_amount": "decimal", "gst_amount": "decimal", "other_amount": "decimal",
+        "base_amount": "decimal", "gst_amount": "decimal", "other_amount": "decimal", "discount_amount": "decimal",
     },
     EditableEntityType.INVOICE: {
         "invoice_number": "str", "po_number": "str", "vendor_id": "int", "invoice_date": "date", "due_date": "date",
         "project_id": "int", "description": "str",
-        "taxable_amount": "decimal", "cgst": "decimal", "sgst": "decimal", "igst": "decimal", "other_tax": "decimal",
+        "taxable_amount": "decimal", "cgst": "decimal", "sgst": "decimal", "igst": "decimal", "other_tax": "decimal", "discount_amount": "decimal",
         "category_id": "int", "sub_category_id": "int",
     },
     EditableEntityType.PAYMENT: {
         "payment_date": "date", "account_id": "int", "payment_mode": "str",
-        "reference_number": "str", "remarks": "str",
+        "reference_number": "str", "remarks": "str", "amount": "decimal",
     },
 }
 
 _AMOUNT_FIELDS = {
-    EditableEntityType.EXPENSE: ["base_amount", "gst_amount", "other_amount"],
-    EditableEntityType.INVOICE: ["taxable_amount", "cgst", "sgst", "igst", "other_tax"],
+    EditableEntityType.EXPENSE: ["base_amount", "gst_amount", "other_amount", "discount_amount"],
+    EditableEntityType.INVOICE: ["taxable_amount", "cgst", "sgst", "igst", "other_tax", "discount_amount"],
 }
 
 
@@ -114,6 +114,31 @@ def _validate_references(db: Session, entity_type: str, changes: dict):
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{field} {value} does not exist")
 
 
+def _apply_payment_amount(db: Session, payment: Payment, new_amount: Decimal):
+    """Only while unverified and only for a single-allocation payment - the
+    one allocation simply follows the new amount. Multi-allocation payments
+    would need a per-expense split, so those go through cancel + re-pay."""
+    if payment.is_verified:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The amount of a verified payment cannot be changed")
+    if payment.is_cancelled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The amount of a cancelled payment cannot be changed")
+    if new_amount is None or new_amount <= 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Amount must be greater than zero")
+    if len(payment.allocations) != 1:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only a payment against a single expense can have its amount edited; cancel and re-pay instead")
+    alloc = payment.allocations[0]
+    expense = db.query(Expense).filter(Expense.id == alloc.expense_id).first()
+    other_paid = get_paid_amount(db, expense.id) - Decimal(alloc.allocated_amount)
+    outstanding = Decimal(expense.total_amount) - other_paid
+    if new_amount > outstanding:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Amount {new_amount} exceeds the outstanding balance of {outstanding} on {expense.expense_number}")
+    alloc.allocated_amount = new_amount
+    payment.amount = new_amount
+    db.add(alloc)
+    db.flush()
+    recalculate_payment_status(db, expense)
+
+
 def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id: int):
     """Applies a validated changes dict to the ORM entity. Shared by both the
     direct-edit path (Admin/Super Admin) and approved edit requests (Accounts
@@ -128,13 +153,17 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
             new_base = _coerce("decimal", changes.get("base_amount", entity.base_amount))
             new_gst = _coerce("decimal", changes.get("gst_amount", entity.gst_amount))
             new_other = _coerce("decimal", changes.get("other_amount", entity.other_amount))
-            new_total = new_base + new_gst + new_other
+            new_discount = _coerce("decimal", changes.get("discount_amount", entity.discount_amount)) or Decimal("0")
+            if new_discount < 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discount cannot be negative")
+            new_total = new_base + new_gst + new_other - new_discount
             if new_total <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Total amount must be greater than zero")
             paid = get_paid_amount(db, entity.id)
             if new_total < paid:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"New total ({new_total}) is less than the amount already paid ({paid})")
             entity.base_amount, entity.gst_amount, entity.other_amount, entity.total_amount = new_base, new_gst, new_other, new_total
+            entity.discount_amount = new_discount
             recalculate_payment_status(db, entity)
         for field, ftype in field_types.items():
             if field in changes and field not in amount_fields:
@@ -150,7 +179,10 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
             new_sgst = _coerce("decimal", changes.get("sgst", entity.sgst))
             new_igst = _coerce("decimal", changes.get("igst", entity.igst))
             new_other_tax = _coerce("decimal", changes.get("other_tax", entity.other_tax))
-            new_total = new_taxable + new_cgst + new_sgst + new_igst + new_other_tax
+            new_discount = _coerce("decimal", changes.get("discount_amount", entity.discount_amount)) or Decimal("0")
+            if new_discount < 0:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discount cannot be negative")
+            new_total = new_taxable + new_cgst + new_sgst + new_igst + new_other_tax - new_discount
             if new_total <= 0:
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Total amount must be greater than zero")
             paid = get_paid_amount(db, expense.id) if expense else Decimal("0")
@@ -158,10 +190,12 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, f"New total ({new_total}) is less than the amount already paid ({paid})")
             entity.taxable_amount, entity.cgst, entity.sgst, entity.igst, entity.other_tax = new_taxable, new_cgst, new_sgst, new_igst, new_other_tax
             entity.total_amount = new_total
+            entity.discount_amount = new_discount
             if expense:
                 expense.base_amount = new_taxable
                 expense.gst_amount = new_cgst + new_sgst + new_igst
                 expense.other_amount = new_other_tax
+                expense.discount_amount = new_discount
                 expense.total_amount = new_total
                 recalculate_payment_status(db, expense)
 
@@ -193,8 +227,10 @@ def apply_changes(db: Session, entity_type: str, entity, changes: dict, actor_id
             db.add(expense)
 
     elif entity_type == EditableEntityType.PAYMENT:
+        if "amount" in changes:
+            _apply_payment_amount(db, entity, _coerce("decimal", changes["amount"]))
         for field, ftype in field_types.items():
-            if field in changes:
+            if field in changes and field != "amount":
                 setattr(entity, field, _coerce(ftype, changes[field]))
         db.add(entity)
 

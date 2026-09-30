@@ -25,6 +25,7 @@ class ExpenseOut(BaseModel):
     base_amount: Decimal
     gst_amount: Decimal
     other_amount: Decimal
+    discount_amount: Decimal = Decimal("0")
     total_amount: Decimal
     status: str
     payment_status: str
@@ -51,6 +52,7 @@ class DirectExpenseCreate(BaseModel):
     base_amount: Decimal
     gst_amount: Decimal = Decimal("0")
     other_amount: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
 
     pay_immediately: bool = False
     payment_date: dt.date | None = None
@@ -90,6 +92,7 @@ class InvoiceCreate(BaseModel):
     sgst: Decimal = Decimal("0")
     igst: Decimal = Decimal("0")
     other_tax: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
 
     pay_immediately: bool = False
     payment_date: dt.date | None = None
@@ -115,6 +118,7 @@ class InvoiceOut(BaseModel):
     sgst: Decimal
     igst: Decimal
     other_tax: Decimal
+    discount_amount: Decimal = Decimal("0")
     total_amount: Decimal
     status: str
     expense_id: int

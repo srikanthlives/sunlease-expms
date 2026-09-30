@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.models.models import EmployeeClaim, Employee, Project, User, ExpenseCategory
 from app.models.enums import ClaimStatus, RoleName
 from app.schemas.transactions import ClaimCreate, ClaimUpdate, ClaimOut, RejectRequest, EmailPdfRequest
+from app.core.multi import ids, strs, names
 from app.services import claim_service, project_scope_service, claim_pdf_service, claims_list_pdf_service, email_service
 
 router = APIRouter(prefix="/api/v1/claims", tags=["claims"])
@@ -147,12 +148,12 @@ def _scoped_query(
         elif employee_id:
             q = q.filter(EmployeeClaim.employee_id == employee_id)
 
-    if status_:
-        q = q.filter(EmployeeClaim.status == status_)
-    if project_id:
-        q = q.filter(EmployeeClaim.project_id == project_id)
-    if category_id:
-        q = q.filter(EmployeeClaim.category_id == category_id)
+    if strs(status_):
+        q = q.filter(EmployeeClaim.status.in_(strs(status_)))
+    if ids(project_id):
+        q = q.filter(EmployeeClaim.project_id.in_(ids(project_id)))
+    if ids(category_id):
+        q = q.filter(EmployeeClaim.category_id.in_(ids(category_id)))
     if date_from:
         q = q.filter(EmployeeClaim.claim_date >= date_from)
     if date_to:
@@ -165,7 +166,7 @@ def list_claims(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
     employee_id: int | None = None, status_: str | None = None,
     mine: bool = False, pending_for_me: bool = False,
-    project_id: int | None = None, category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
     sort_by: str | None = None, sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
@@ -190,7 +191,7 @@ def claims_summary(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
     employee_id: int | None = None, status_: str | None = None,
     mine: bool = False, pending_for_me: bool = False,
-    project_id: int | None = None, category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
     """Aggregate totals over the FULL filtered result set (not just the
@@ -211,14 +212,12 @@ def _describe_filters(db: Session, *, project_id, category_id, status_, date_fro
     parts = []
     if date_from or date_to:
         parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
-    if project_id:
-        p = db.query(Project).filter(Project.id == project_id).first()
-        parts.append(f"Project: {p.name if p else project_id}")
-    if category_id:
-        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
-        parts.append(f"Overall Head: {c.name if c else category_id}")
-    if status_:
-        parts.append(f"Status: {status_.replace('_', ' ')}")
+    if ids(project_id):
+        parts.append(f"Project: {names(db, Project, 'name', project_id)}")
+    if ids(category_id):
+        parts.append(f"Overall Head: {names(db, ExpenseCategory, 'name', category_id)}")
+    if strs(status_):
+        parts.append(f"Status: {', '.join(x.replace('_', ' ') for x in strs(status_))}")
     return "Filters: " + " | ".join(parts) if parts else "Filters: none (all claims)"
 
 
@@ -227,7 +226,7 @@ def export_claims_pdf(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
     employee_id: int | None = None, status_: str | None = None,
     mine: bool = False, pending_for_me: bool = False,
-    project_id: int | None = None, category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
 ):

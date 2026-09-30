@@ -4,6 +4,7 @@ import client from "../../api/client";
 import { useMasters } from "../../hooks/useMasters";
 import { Card, Select, StatusBadge, formatMoney, formatDate } from "../../components/ui";
 import DateRangePicker, { buildPresets } from "../../components/DateRangePicker";
+import MultiSelect from "../../components/MultiSelect";
 import Attachments from "../../components/Attachments";
 import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ChevronLeft, Wallet, Split } from "lucide-react";
 
@@ -35,7 +36,9 @@ function ExpenseRow({ row, expanded, onToggle }) {
           <span className="w-32 shrink-0 text-[11px] text-ink/40 uppercase whitespace-nowrap overflow-hidden text-ellipsis" title={row.source_type.replace(/_/g, " ")}>
             {row.source_type.replace(/_/g, " ")}
           </span>
+          <span className="w-28 shrink-0 truncate text-sm" title={row.bill_number || ""}>{row.bill_number || "—"}</span>
           <span className="flex-1 min-w-0 truncate text-sm" title={row.payee}>{row.payee}</span>
+          <span className="flex-1 min-w-0 truncate text-xs text-ink/60" title={row.description || ""}>{row.description || "—"}</span>
           <span className="w-40 shrink-0 truncate text-xs text-ink/50" title={`${row.category_name}${row.sub_category_name ? " / " + row.sub_category_name : ""}`}>
             {row.category_name}{row.sub_category_name ? ` / ${row.sub_category_name}` : ""}
           </span>
@@ -94,11 +97,11 @@ export default function ExpensePaymentMappingReport() {
   const masters = useMasters();
   const [bounds, setBounds] = useState(null);
   const [range, setRange] = useState(null);
-  const [projectId, setProjectId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subCategoryId, setSubCategoryId] = useState("");
-  const [sourceType, setSourceType] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
+  const [projectId, setProjectId] = useState([]);
+  const [categoryId, setCategoryId] = useState([]);
+  const [subCategoryId, setSubCategoryId] = useState([]);
+  const [sourceType, setSourceType] = useState([]);
+  const [paymentStatus, setPaymentStatus] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [rows, setRows] = useState(null);
@@ -113,17 +116,17 @@ export default function ExpensePaymentMappingReport() {
     });
   }, []);
 
-  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+  useEffect(() => { setSubCategoryId([]); }, [categoryId]);
   useEffect(() => { setPage(1); }, [range, projectId, categoryId, subCategoryId, sourceType, paymentStatus, pageSize]);
 
   useEffect(() => {
     if (!range) return;
     const params = { date_from: range.from, date_to: range.to, page, page_size: pageSize };
-    if (projectId) params.project_id = projectId;
-    if (categoryId) params.category_id = categoryId;
-    if (subCategoryId) params.sub_category_id = subCategoryId;
-    if (sourceType) params.source_type = sourceType;
-    if (paymentStatus) params.payment_status = paymentStatus;
+    if (projectId.length) params.project_id = projectId.join(",");
+    if (categoryId.length) params.category_id = categoryId.join(",");
+    if (subCategoryId.length) params.sub_category_id = subCategoryId.join(",");
+    if (sourceType.length) params.source_type = sourceType.join(",");
+    if (paymentStatus.length) params.payment_status = paymentStatus.join(",");
     client.get("/reports/expense-payment-mapping", { params }).then((res) => {
       setRows(res.data.rows);
       setTotalCount(res.data.count);
@@ -161,26 +164,17 @@ export default function ExpensePaymentMappingReport() {
             <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
           </div>
           <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
-            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
-              <option value="">All Projects</option>
-              {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-            <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)} className="w-44">
-              <option value="">All Sources</option>
-              {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-            </Select>
-            <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
-              <option value="">All Heads</option>
-              {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
-              <option value="">All Sub-Heads</option>
-              {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
-            <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="w-44">
-              <option value="">All Payment Statuses</option>
-              {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-            </Select>
+            <MultiSelect label="Project" className="w-44" placeholder="All Projects" value={projectId} onChange={setProjectId}
+              options={masters.projects.map((p) => ({ value: p.id, label: p.name }))} />
+            <MultiSelect label="Source" className="w-44" placeholder="All Sources" value={sourceType} onChange={setSourceType}
+              options={SOURCE_TYPES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
+            <MultiSelect label="Head" className="w-44" placeholder="All Heads" value={categoryId} onChange={setCategoryId}
+              options={masters.categories.map((c) => ({ value: c.id, label: c.name }))} />
+            <MultiSelect label="Sub-Head" className="w-44" placeholder="All Sub-Heads" value={subCategoryId} onChange={setSubCategoryId}
+              disabled={categoryId.length === 0}
+              options={masters.subCategories.filter((s) => categoryId.includes(String(s.category_id))).map((s) => ({ value: s.id, label: s.name }))} />
+            <MultiSelect label="Payment" className="w-44" placeholder="All Payment Statuses" value={paymentStatus} onChange={setPaymentStatus}
+              options={PAYMENT_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
           </div>
         </Card>
       )}
@@ -207,7 +201,9 @@ export default function ExpensePaymentMappingReport() {
               <span className="w-32 shrink-0">Expense #</span>
               <span className="w-24 shrink-0">Date</span>
               <span className="w-32 shrink-0">Source</span>
+              <span className="w-28 shrink-0">Bill No</span>
               <span className="flex-1 min-w-0">Payee</span>
+              <span className="flex-1 min-w-0">Description</span>
               <span className="w-40 shrink-0">Head / Sub-Head</span>
               <span className="w-28 shrink-0 text-right">Amount</span>
               <span className="w-28 shrink-0 text-right">Paid</span>

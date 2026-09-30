@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user, require_roles
 from app.db.session import get_db
 from app.models.enums import RoleName
-from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation, ExpenseCategory, ExpenseSubCategory, Account
+from app.models.models import Expense, Payment, EmployeeClaim, Vendor, Employee, Project, User, PaymentAllocation, ExpenseCategory, ExpenseSubCategory, Account, Invoice
 from app.services.payment_status_service import get_paid_amount
 from app.services import project_scope_service
 
@@ -345,7 +345,7 @@ def project_category_breakdown(
 @router.get("/reports/expense-payment-mapping", dependencies=[Depends(require_report_viewer)])
 def expense_payment_mapping(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None, sub_category_id: str | None = None,
     source_type: str | None = None, payment_status: str | None = None,
     date_from: str | None = None, date_to: str | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(25, ge=1, le=500),
@@ -356,23 +356,34 @@ def expense_payment_mapping(
     once) shows up under each of them, flagged with how many expenses it
     covers in total - so it's obvious from any single expense's row that its
     payment wasn't exclusive to it."""
+    # Filters accept comma-separated lists (multi-select).
+    def _ids(v):
+        try:
+            return [int(x) for x in (v or "").split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid id list")
+    def _strs(v):
+        return [x.strip() for x in (v or "").split(",") if x.strip()]
+    project_ids, category_ids, sub_category_ids = _ids(project_id), _ids(category_id), _ids(sub_category_id)
+    source_types, payment_statuses = _strs(source_type), _strs(payment_status)
+
     scope = project_scope_service.get_effective_project_scope(db, user)
-    if project_id and scope is not None and project_id not in scope:
+    if project_ids and scope is not None and any(p not in scope for p in project_ids):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You are not assigned to this project")
 
     q = db.query(Expense).filter(Expense.status == "ACTIVE")
-    if project_id:
-        q = q.filter(Expense.project_id == project_id)
+    if project_ids:
+        q = q.filter(Expense.project_id.in_(project_ids))
     elif scope is not None:
         q = q.filter(Expense.project_id.in_(scope)) if scope else q.filter(False)
-    if category_id:
-        q = q.filter(Expense.category_id == category_id)
-    if sub_category_id:
-        q = q.filter(Expense.sub_category_id == sub_category_id)
-    if source_type:
-        q = q.filter(Expense.source_type == source_type)
-    if payment_status:
-        q = q.filter(Expense.payment_status == payment_status)
+    if category_ids:
+        q = q.filter(Expense.category_id.in_(category_ids))
+    if sub_category_ids:
+        q = q.filter(Expense.sub_category_id.in_(sub_category_ids))
+    if source_types:
+        q = q.filter(Expense.source_type.in_(source_types))
+    if payment_statuses:
+        q = q.filter(Expense.payment_status.in_(payment_statuses))
     if date_from:
         q = q.filter(Expense.expense_date >= date_from)
     if date_to:
@@ -424,6 +435,12 @@ def expense_payment_mapping(
             return e.employee.employee_name if e.employee else "—"
         return e.supplier_name or "—"
 
+    invoice_ids = [e.source_id for e in expenses if e.source_type == "INVOICE" and e.source_id]
+    invoice_numbers = (
+        {i.id: i.invoice_number for i in db.query(Invoice).filter(Invoice.id.in_(invoice_ids)).all()}
+        if invoice_ids else {}
+    )
+
     result = []
     for e in expenses:
         paid = get_paid_amount(db, e.id)
@@ -459,6 +476,7 @@ def expense_payment_mapping(
             "project_name": e.project.name if e.project else "—",
             "category_name": e.category.name if e.category else "Uncategorised",
             "sub_category_name": e.sub_category.name if e.sub_category else None,
+            "bill_number": (invoice_numbers.get(e.source_id) if e.source_type == "INVOICE" else None) or e.bill_number,
             "description": e.description,
             "total_amount": _d(e.total_amount),
             "paid_amount": _d(paid),

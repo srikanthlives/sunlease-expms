@@ -10,6 +10,7 @@ from app.models.models import Expense, User, Project, ExpenseCategory, ExpenseSu
 from app.schemas.transactions import DirectExpenseCreate, ExpenseOut, CancelRequest
 from app.schemas.edit_requests import ExpenseUpdate
 from app.services import expense_service, edit_request_service, project_scope_service, expense_pdf_service
+from app.core.multi import ids, strs, names
 from app.services.payment_status_service import get_paid_amount
 from app.models.enums import SourceType, RoleName
 
@@ -91,22 +92,22 @@ def _apply_filters(
     q, *, project_id, vendor_id, employee_id, category_id, sub_category_id,
     source_type, payment_status, status_, date_from, date_to,
 ):
-    if project_id:
-        q = q.filter(Expense.project_id == project_id)
-    if vendor_id:
-        q = q.filter(Expense.vendor_id == vendor_id)
-    if employee_id:
-        q = q.filter(Expense.employee_id == employee_id)
-    if category_id:
-        q = q.filter(Expense.category_id == category_id)
-    if sub_category_id:
-        q = q.filter(Expense.sub_category_id == sub_category_id)
-    if source_type:
-        q = q.filter(Expense.source_type == source_type)
-    if payment_status:
-        q = q.filter(Expense.payment_status == payment_status)
-    if status_:
-        q = q.filter(Expense.status == status_)
+    if ids(project_id):
+        q = q.filter(Expense.project_id.in_(ids(project_id)))
+    if ids(vendor_id):
+        q = q.filter(Expense.vendor_id.in_(ids(vendor_id)))
+    if ids(employee_id):
+        q = q.filter(Expense.employee_id.in_(ids(employee_id)))
+    if ids(category_id):
+        q = q.filter(Expense.category_id.in_(ids(category_id)))
+    if ids(sub_category_id):
+        q = q.filter(Expense.sub_category_id.in_(ids(sub_category_id)))
+    if strs(source_type):
+        q = q.filter(Expense.source_type.in_(strs(source_type)))
+    if strs(payment_status):
+        q = q.filter(Expense.payment_status.in_(strs(payment_status)))
+    if strs(status_):
+        q = q.filter(Expense.status.in_(strs(status_)))
     if date_from:
         q = q.filter(Expense.expense_date >= date_from)
     if date_to:
@@ -125,7 +126,7 @@ def create_direct_expense(payload: DirectExpenseCreate, db: Session = Depends(ge
         db, source_type=SourceType.EXPENSE, source_id=None, expense_date=payload.expense_date,
         project_id=payload.project_id, vendor_id=None, employee_id=None,
         category_id=payload.category_id, sub_category_id=payload.sub_category_id, description=payload.description,
-        base_amount=payload.base_amount, gst_amount=payload.gst_amount, other_amount=payload.other_amount,
+        base_amount=payload.base_amount, gst_amount=payload.gst_amount, other_amount=payload.other_amount, discount_amount=payload.discount_amount,
         created_by=user.id, supplier_name=payload.supplier_name, bill_number=payload.bill_number,
     )
     if payload.pay_immediately:
@@ -142,8 +143,8 @@ def create_direct_expense(payload: DirectExpenseCreate, db: Session = Depends(ge
 @router.get("", response_model=list[ExpenseOut], dependencies=[Depends(require_non_employee)])
 def list_expenses(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    project_id: int | None = None, vendor_id: int | None = None, employee_id: int | None = None,
-    category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, vendor_id: str | None = None, employee_id: str | None = None,
+    category_id: str | None = None, sub_category_id: str | None = None,
     source_type: str | None = None, payment_status: str | None = None, status_: str | None = Query(None, alias="status"),
     date_from: str | None = None, date_to: str | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
@@ -173,8 +174,8 @@ def list_expenses(
 @router.get("/summary", dependencies=[Depends(require_non_employee)])
 def expenses_summary(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    project_id: int | None = None, vendor_id: int | None = None, employee_id: int | None = None,
-    category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, vendor_id: str | None = None, employee_id: str | None = None,
+    category_id: str | None = None, sub_category_id: str | None = None,
     source_type: str | None = None, payment_status: str | None = None, status_: str | None = Query(None, alias="status"),
     date_from: str | None = None, date_to: str | None = None,
 ):
@@ -216,35 +217,30 @@ def _describe_filters(
     parts = []
     if date_from or date_to:
         parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
-    if source_type:
-        parts.append(f"Source: {source_type.replace('_', ' ')}")
-    if project_id:
-        p = db.query(Project).filter(Project.id == project_id).first()
-        parts.append(f"Project: {p.name if p else project_id}")
-    if vendor_id:
-        v = db.query(Vendor).filter(Vendor.id == vendor_id).first()
-        parts.append(f"Vendor: {v.vendor_name if v else vendor_id}")
-    if employee_id:
-        e = db.query(Employee).filter(Employee.id == employee_id).first()
-        parts.append(f"Employee: {e.employee_name if e else employee_id}")
-    if category_id:
-        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
-        parts.append(f"Head: {c.name if c else category_id}")
-    if sub_category_id:
-        s = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id).first()
-        parts.append(f"Sub-Head: {s.name if s else sub_category_id}")
-    if payment_status:
-        parts.append(f"Payment: {payment_status.replace('_', ' ')}")
-    if status_:
-        parts.append(f"Status: {status_}")
+    if strs(source_type):
+        parts.append(f"Source: {', '.join(x.replace('_', ' ') for x in strs(source_type))}")
+    if ids(project_id):
+        parts.append(f"Project: {names(db, Project, 'name', project_id)}")
+    if ids(vendor_id):
+        parts.append(f"Vendor: {names(db, Vendor, 'vendor_name', vendor_id)}")
+    if ids(employee_id):
+        parts.append(f"Employee: {names(db, Employee, 'employee_name', employee_id)}")
+    if ids(category_id):
+        parts.append(f"Head: {names(db, ExpenseCategory, 'name', category_id)}")
+    if ids(sub_category_id):
+        parts.append(f"Sub-Head: {names(db, ExpenseSubCategory, 'name', sub_category_id)}")
+    if strs(payment_status):
+        parts.append(f"Payment: {', '.join(x.replace('_', ' ') for x in strs(payment_status))}")
+    if strs(status_):
+        parts.append(f"Status: {', '.join(strs(status_))}")
     return "Filters: " + " | ".join(parts) if parts else "Filters: none (all expenses)"
 
 
 @router.get("/export-pdf", dependencies=[Depends(require_non_employee)])
 def export_expenses_pdf(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    project_id: int | None = None, vendor_id: int | None = None, employee_id: int | None = None,
-    category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, vendor_id: str | None = None, employee_id: str | None = None,
+    category_id: str | None = None, sub_category_id: str | None = None,
     source_type: str | None = None, payment_status: str | None = None, status_: str | None = Query(None, alias="status"),
     date_from: str | None = None, date_to: str | None = None,
     columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),

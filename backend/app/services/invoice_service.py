@@ -11,10 +11,12 @@ from app.services import expense_service, audit_service, document_service
 def create_invoice(
     db: Session, *, invoice_number, po_number=None, vendor_id, invoice_date, due_date, project_id, description,
     taxable_amount: Decimal, cgst: Decimal, sgst: Decimal, igst: Decimal, other_tax: Decimal,
-    category_id, sub_category_id, created_by: int, pay_immediately: bool = False,
+    category_id, sub_category_id, created_by: int, discount_amount: Decimal = Decimal("0"), pay_immediately: bool = False,
     payment_date=None, account_id=None, payment_mode=None, reference_number=None, remarks=None,
 ):
-    total = Decimal(taxable_amount or 0) + Decimal(cgst or 0) + Decimal(sgst or 0) + Decimal(igst or 0) + Decimal(other_tax or 0)
+    total = Decimal(taxable_amount or 0) + Decimal(cgst or 0) + Decimal(sgst or 0) + Decimal(igst or 0) + Decimal(other_tax or 0) - Decimal(discount_amount or 0)
+    if Decimal(discount_amount or 0) < 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discount cannot be negative")
     if total <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invoice total must be greater than zero")
     if pay_immediately and (not account_id or not payment_mode or not payment_date):
@@ -25,13 +27,13 @@ def create_invoice(
         db, source_type=SourceType.INVOICE, source_id=None, expense_date=invoice_date, project_id=project_id,
         vendor_id=vendor_id, employee_id=None, category_id=category_id, sub_category_id=sub_category_id,
         description=description, base_amount=taxable_amount, gst_amount=(Decimal(cgst or 0) + Decimal(sgst or 0) + Decimal(igst or 0)),
-        other_amount=other_tax, created_by=created_by,
+        other_amount=other_tax, discount_amount=discount_amount, created_by=created_by,
     )
 
     invoice = Invoice(
         invoice_number=invoice_number, po_number=po_number, vendor_id=vendor_id, invoice_date=invoice_date, due_date=due_date,
         project_id=project_id, description=description, taxable_amount=taxable_amount, cgst=cgst, sgst=sgst,
-        igst=igst, other_tax=other_tax, total_amount=total, status="RECORDED", expense_id=expense.id,
+        igst=igst, other_tax=other_tax, discount_amount=discount_amount or 0, total_amount=total, status="RECORDED", expense_id=expense.id,
         created_by=created_by,
     )
     db.add(invoice)

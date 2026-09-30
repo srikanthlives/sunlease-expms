@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.models import Expense, Payment, PaymentAllocation, User, Vendor, Employee, Account, Project, ExpenseCategory, ExpenseSubCategory
 from app.schemas.transactions import PaymentCreate, PaymentOut, CancelRequest
 from app.schemas.edit_requests import PaymentUpdate
+from app.core.multi import ids, strs, names
 from app.services import payment_service, edit_request_service, project_scope_service, payment_pdf_service
 from app.models.enums import RoleName
 
@@ -65,33 +66,33 @@ def _apply_filters(
     q, *, vendor_id, employee_id, account_id, payment_mode, is_cancelled,
     date_from, date_to, project_id, category_id, sub_category_id,
 ):
-    if vendor_id:
-        q = q.filter(Payment.vendor_id == vendor_id)
-    if employee_id:
-        q = q.filter(Payment.employee_id == employee_id)
-    if account_id:
-        q = q.filter(Payment.account_id == account_id)
-    if payment_mode:
-        q = q.filter(Payment.payment_mode == payment_mode)
+    if ids(vendor_id):
+        q = q.filter(Payment.vendor_id.in_(ids(vendor_id)))
+    if ids(employee_id):
+        q = q.filter(Payment.employee_id.in_(ids(employee_id)))
+    if ids(account_id):
+        q = q.filter(Payment.account_id.in_(ids(account_id)))
+    if strs(payment_mode):
+        q = q.filter(Payment.payment_mode.in_(strs(payment_mode)))
     if is_cancelled is not None:
         q = q.filter(Payment.is_cancelled == is_cancelled)
     if date_from:
         q = q.filter(Payment.payment_date >= date_from)
     if date_to:
         q = q.filter(Payment.payment_date <= date_to)
-    if project_id or category_id or sub_category_id:
+    if ids(project_id) or ids(category_id) or ids(sub_category_id):
         # A payment has no project/head/sub-head of its own - reached only
         # through its allocations' expenses. Matches if ANY allocation
         # touches an expense in the given project/head/sub-head.
         q = q.join(PaymentAllocation, PaymentAllocation.payment_id == Payment.id).join(
             Expense, PaymentAllocation.expense_id == Expense.id
         )
-        if project_id:
-            q = q.filter(Expense.project_id == project_id)
-        if category_id:
-            q = q.filter(Expense.category_id == category_id)
-        if sub_category_id:
-            q = q.filter(Expense.sub_category_id == sub_category_id)
+        if ids(project_id):
+            q = q.filter(Expense.project_id.in_(ids(project_id)))
+        if ids(category_id):
+            q = q.filter(Expense.category_id.in_(ids(category_id)))
+        if ids(sub_category_id):
+            q = q.filter(Expense.sub_category_id.in_(ids(sub_category_id)))
         q = q.distinct()
     return q
 
@@ -128,10 +129,10 @@ def create_payment(payload: PaymentCreate, db: Session = Depends(get_db), user: 
 @router.get("", response_model=list[PaymentOut], dependencies=[Depends(require_non_employee)])
 def list_payments(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, employee_id: int | None = None,
-    account_id: int | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
+    vendor_id: str | None = None, employee_id: str | None = None,
+    account_id: str | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
     date_from: str | None = None, date_to: str | None = None,
-    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None, sub_category_id: str | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
     sort_by: str | None = None, sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):
@@ -153,10 +154,10 @@ def list_payments(
 @router.get("/summary", dependencies=[Depends(require_non_employee)])
 def payments_summary(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, employee_id: int | None = None,
-    account_id: int | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
+    vendor_id: str | None = None, employee_id: str | None = None,
+    account_id: str | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
     date_from: str | None = None, date_to: str | None = None,
-    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None, sub_category_id: str | None = None,
 ):
     """Aggregate totals over the FULL filtered result set (not just the
     current page) - backs the pagination count and the amount summary row
@@ -179,26 +180,20 @@ def _describe_filters(
     parts = []
     if date_from or date_to:
         parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
-    if vendor_id:
-        v = db.query(Vendor).filter(Vendor.id == vendor_id).first()
-        parts.append(f"Vendor: {v.vendor_name if v else vendor_id}")
-    if employee_id:
-        e = db.query(Employee).filter(Employee.id == employee_id).first()
-        parts.append(f"Employee: {e.employee_name if e else employee_id}")
-    if account_id:
-        a = db.query(Account).filter(Account.id == account_id).first()
-        parts.append(f"Account: {a.account_name if a else account_id}")
-    if payment_mode:
-        parts.append(f"Mode: {payment_mode}")
-    if project_id:
-        p = db.query(Project).filter(Project.id == project_id).first()
-        parts.append(f"Project: {p.name if p else project_id}")
-    if category_id:
-        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
-        parts.append(f"Head: {c.name if c else category_id}")
-    if sub_category_id:
-        s = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id).first()
-        parts.append(f"Sub-Head: {s.name if s else sub_category_id}")
+    if ids(vendor_id):
+        parts.append(f"Vendor: {names(db, Vendor, 'vendor_name', vendor_id)}")
+    if ids(employee_id):
+        parts.append(f"Employee: {names(db, Employee, 'employee_name', employee_id)}")
+    if ids(account_id):
+        parts.append(f"Account: {names(db, Account, 'account_name', account_id)}")
+    if strs(payment_mode):
+        parts.append(f"Mode: {', '.join(strs(payment_mode))}")
+    if ids(project_id):
+        parts.append(f"Project: {names(db, Project, 'name', project_id)}")
+    if ids(category_id):
+        parts.append(f"Head: {names(db, ExpenseCategory, 'name', category_id)}")
+    if ids(sub_category_id):
+        parts.append(f"Sub-Head: {names(db, ExpenseSubCategory, 'name', sub_category_id)}")
     if is_cancelled is not None:
         parts.append(f"Status: {'Cancelled' if is_cancelled else 'Active'}")
     return "Filters: " + " | ".join(parts) if parts else "Filters: none (all payments)"
@@ -207,10 +202,10 @@ def _describe_filters(
 @router.get("/export-pdf", dependencies=[Depends(require_non_employee)])
 def export_payments_pdf(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, employee_id: int | None = None,
-    account_id: int | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
+    vendor_id: str | None = None, employee_id: str | None = None,
+    account_id: str | None = None, payment_mode: str | None = None, is_cancelled: bool | None = None,
     date_from: str | None = None, date_to: str | None = None,
-    project_id: int | None = None, category_id: int | None = None, sub_category_id: int | None = None,
+    project_id: str | None = None, category_id: str | None = None, sub_category_id: str | None = None,
     columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
 ):
     """PDF export of the Payments list - same filters and the same set of

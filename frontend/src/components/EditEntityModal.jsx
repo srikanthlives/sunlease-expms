@@ -17,6 +17,7 @@ const FIELD_SETS = {
     { key: "base_amount", label: "Base Amount", type: "number" },
     { key: "gst_amount", label: "GST Amount", type: "number" },
     { key: "other_amount", label: "Other Amount", type: "number", hint: "Any amount beyond Base + GST (rounding, misc. charges, etc.) - included in Total." },
+    { key: "discount_amount", label: "Discount", type: "number", hint: "Subtracted from the Total." },
   ],
   INVOICE: (masters) => [
     { key: "invoice_number", label: "Invoice Number", type: "text" },
@@ -33,9 +34,14 @@ const FIELD_SETS = {
     { key: "sgst", label: "SGST", type: "number" },
     { key: "igst", label: "IGST", type: "number" },
     { key: "other_tax", label: "Other Tax", type: "number" },
+    { key: "discount_amount", label: "Discount", type: "number", hint: "Subtracted from the Total." },
   ],
-  PAYMENT: (masters) => [
+  PAYMENT: (masters, entity) => [
     { key: "payment_date", label: "Payment Date", type: "date" },
+    // Amount is editable only until Admin verifies, and only for a payment
+    // against a single expense (the backend enforces the same rules).
+    ...(!entity.is_verified && !entity.is_cancelled && (entity.allocations || []).length === 1
+      ? [{ key: "amount", label: "Amount", type: "number" }] : []),
     { key: "account_id", label: "Account", type: "select", options: masters.accounts, optionLabel: "account_name" },
     { key: "payment_mode", label: "Payment Mode", type: "select", options: [{ id: "NEFT" }, { id: "RTGS" }, { id: "IMPS" }, { id: "UPI" }, { id: "CASH" }, { id: "CHEQUE" }], optionLabel: "id", staticOptions: true },
     { key: "reference_number", label: "Reference / UTR", type: "text" },
@@ -49,10 +55,10 @@ const FIELD_SETS = {
 // purely so the effect of changing e.g. Other Amount is visible before
 // saving, instead of a surprise once the list reloads.
 const AMOUNT_PARTS = {
-  EXPENSE: [{ key: "base_amount", label: "Base" }, { key: "gst_amount", label: "GST" }, { key: "other_amount", label: "Other" }],
+  EXPENSE: [{ key: "base_amount", label: "Base" }, { key: "gst_amount", label: "GST" }, { key: "other_amount", label: "Other" }, { key: "discount_amount", label: "Discount", negative: true }],
   INVOICE: [
     { key: "taxable_amount", label: "Taxable" }, { key: "cgst", label: "CGST" }, { key: "sgst", label: "SGST" },
-    { key: "igst", label: "IGST" }, { key: "other_tax", label: "Other Tax" },
+    { key: "igst", label: "IGST" }, { key: "other_tax", label: "Other Tax" }, { key: "discount_amount", label: "Discount", negative: true },
   ],
 };
 
@@ -67,7 +73,7 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
   // once Admin/Super Admin verifies it, Accounts drops to the
   // edit-request/approval path (Admin always edits directly, regardless).
   const isDirect = isAdmin || !entity.is_verified;
-  const fields = FIELD_SETS[entityType](masters);
+  const fields = FIELD_SETS[entityType](masters, entity);
 
   const [form, setForm] = useState(Object.fromEntries(fields.map((f) => [f.key, entity[f.key] ?? ""])));
   const [error, setError] = useState("");
@@ -77,7 +83,7 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
   function set(k, v) { setForm((s) => ({ ...s, [k]: v })); }
 
   const amountParts = AMOUNT_PARTS[entityType];
-  const newTotal = amountParts ? amountParts.reduce((sum, f) => sum + (Number(form[f.key]) || 0), 0) : null;
+  const newTotal = amountParts ? amountParts.reduce((sum, f) => sum + (f.negative ? -1 : 1) * (Number(form[f.key]) || 0), 0) : null;
 
   function buildChanges() {
     // Only send fields that actually differ from the original value, so
@@ -173,7 +179,7 @@ export default function EditEntityModal({ entityType, entity, onClose, onSaved }
           </div>
           {newTotal != null && (
             <div className="text-sm text-ink/60 bg-ink/5 rounded-md px-3 py-2">
-              New Total = {amountParts.map((f) => f.label).join(" + ")} = <span className="font-semibold text-ink tabular">{newTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              New Total = {amountParts.map((f, i) => (f.negative ? "− " : i ? "+ " : "") + f.label).join(" ")} = <span className="font-semibold text-ink tabular">{newTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           )}
           {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}

@@ -1,3 +1,4 @@
+import MultiSelect from "../components/MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
@@ -72,11 +73,11 @@ export default function Invoices() {
   const [editingInvoice, setEditingInvoice] = useState(null);
   const [bounds, setBounds] = useState(null);
   const [range, setRange] = useState(defaultMonthRange);
-  const [projectId, setProjectId] = useState("");
-  const [vendorId, setVendorId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subCategoryId, setSubCategoryId] = useState("");
-  const [invoiceStatus, setInvoiceStatus] = useState("");
+  const [projectId, setProjectId] = useState([]);
+  const [vendorId, setVendorId] = useState([]);
+  const [categoryId, setCategoryId] = useState([]);
+  const [subCategoryId, setSubCategoryId] = useState([]);
+  const [invoiceStatus, setInvoiceStatus] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState(null);
@@ -120,11 +121,11 @@ export default function Invoices() {
     const params = {};
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
-    if (projectId) params.project_id = projectId;
-    if (vendorId) params.vendor_id = vendorId;
-    if (categoryId) params.category_id = categoryId;
-    if (subCategoryId) params.sub_category_id = subCategoryId;
-    if (invoiceStatus) params.status_ = invoiceStatus;
+    if (projectId.length) params.project_id = projectId.join(",");
+    if (vendorId.length) params.vendor_id = vendorId.join(",");
+    if (categoryId.length) params.category_id = categoryId.join(",");
+    if (subCategoryId.length) params.sub_category_id = subCategoryId.join(",");
+    if (invoiceStatus.length) params.status_ = invoiceStatus.join(",");
     return params;
   }
 
@@ -136,7 +137,7 @@ export default function Invoices() {
   }
   useEffect(load, [range.from, range.to, projectId, vendorId, categoryId, subCategoryId, invoiceStatus, page, pageSize, sort]);
   useEffect(() => { setPage(1); }, [range.from, range.to, projectId, vendorId, categoryId, subCategoryId, invoiceStatus, pageSize, sort]);
-  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+  useEffect(() => { setSubCategoryId([]); }, [categoryId]);
 
   async function downloadPdf() {
     const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => k !== "attachments" && !hiddenCols.has(k));
@@ -191,26 +192,16 @@ export default function Invoices() {
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
         </div>
         <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
-            <option value="">All Projects</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
-          <Select label="Vendor" value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="w-44">
-            <option value="">All Vendors</option>
-            {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
-          </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
-            <option value="">All Heads</option>
-            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
-          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
-            <option value="">All Sub-Heads</option>
-            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-          <Select label="Status" value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value)} className="w-44">
-            <option value="">All Statuses</option>
-            {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
+          <MultiSelect label="Project" className="w-44" placeholder="All Projects" value={projectId} onChange={setProjectId}
+            options={masters.projects.map((p) => ({ value: p.id, label: p.name }))} />
+          <MultiSelect label="Vendor" className="w-44" placeholder="All Vendors" value={vendorId} onChange={setVendorId}
+            options={masters.vendors.map((v) => ({ value: v.id, label: vendorLabel(v) }))} />
+          <MultiSelect label="Head" className="w-44" placeholder="All Heads" value={categoryId} onChange={setCategoryId}
+            options={masters.categories.map((c) => ({ value: c.id, label: c.name }))} />
+          <MultiSelect label="Sub-Head" className="w-44" placeholder="All Sub-Heads" value={subCategoryId} onChange={setSubCategoryId} disabled={categoryId.length === 0}
+            options={masters.subCategories.filter((s) => categoryId.includes(String(s.category_id))).map((s) => ({ value: s.id, label: s.name }))} />
+          <MultiSelect label="Status" className="w-44" placeholder="All Statuses" value={invoiceStatus} onChange={setInvoiceStatus}
+            options={INVOICE_STATUSES.map((s) => ({ value: s, label: s }))} />
         </div>
       </Card>
 
@@ -341,7 +332,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
   const [form, setForm] = useState({
     invoice_number: "", po_number: "", vendor_id: "", invoice_date: new Date().toISOString().slice(0, 10), due_date: "",
     project_id: "", category_id: "", sub_category_id: "", description: "",
-    taxable_amount: "", cgst: "0", sgst: "0", igst: "0", other_tax: "0",
+    taxable_amount: "", cgst: "0", sgst: "0", igst: "0", other_tax: "0", discount_amount: "0",
     pay_immediately: false, payment_date: new Date().toISOString().slice(0, 10),
     account_id: "", payment_mode: "NEFT", reference_number: "", remarks: "",
   });
@@ -349,7 +340,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const total = ["taxable_amount", "cgst", "sgst", "igst", "other_tax"].reduce((s, k) => s + Number(form[k] || 0), 0);
+  const total = ["taxable_amount", "cgst", "sgst", "igst", "other_tax"].reduce((s, k) => s + Number(form[k] || 0), 0) - Number(form.discount_amount || 0);
 
   // Only offer vendors that can bill against the selected project - a
   // vendor with no project links at all is general/universal and always
@@ -374,6 +365,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
         sub_category_id: form.sub_category_id || null,
         taxable_amount: Number(form.taxable_amount),
         cgst: Number(form.cgst || 0), sgst: Number(form.sgst || 0), igst: Number(form.igst || 0), other_tax: Number(form.other_tax || 0),
+        discount_amount: Number(form.discount_amount || 0),
         account_id: form.pay_immediately ? Number(form.account_id) : null,
       });
       onCreated();
@@ -409,11 +401,12 @@ function InvoiceForm({ masters, onClose, onCreated }) {
         </div>
         <Textarea label="PO Number(s)" value={form.po_number} onChange={(e) => set("po_number", e.target.value)} rows={2} placeholder="One or more PO numbers, e.g. one per line" />
         <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <Input label="Taxable Amount" type="number" step="0.01" value={form.taxable_amount} onChange={(e) => set("taxable_amount", e.target.value)} required />
           <Input label="CGST" type="number" step="0.01" value={form.cgst} onChange={(e) => set("cgst", e.target.value)} />
           <Input label="SGST" type="number" step="0.01" value={form.sgst} onChange={(e) => set("sgst", e.target.value)} />
           <Input label="IGST" type="number" step="0.01" value={form.igst} onChange={(e) => set("igst", e.target.value)} />
+          <Input label="Discount" type="number" step="0.01" min="0" value={form.discount_amount} onChange={(e) => set("discount_amount", e.target.value)} />
         </div>
         <div className="text-sm text-ink/60">Total: <span className="tabular font-semibold text-ink">{formatMoney(total)}</span></div>
 
@@ -422,7 +415,8 @@ function InvoiceForm({ masters, onClose, onCreated }) {
           Pay now
         </label>
         {form.pay_immediately && (
-          <div className="grid grid-cols-3 gap-4 bg-brand-50 rounded-md p-4">
+          <div className="grid grid-cols-4 gap-4 bg-brand-50 rounded-md p-4">
+            <Input label="Payment Date" type="date" value={form.payment_date} onChange={(e) => set("payment_date", e.target.value)} required />
             <Select label="Account" value={form.account_id} onChange={(e) => set("account_id", e.target.value)} required>
               <option value="">Select…</option>
               {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}

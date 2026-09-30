@@ -23,6 +23,7 @@ class ExpenseUpdate(BaseModel):
     base_amount: Decimal | None = None
     gst_amount: Decimal | None = None
     other_amount: Decimal | None = None
+    discount_amount: Decimal | None = None
 
 
 class InvoiceUpdate(BaseModel):
@@ -38,12 +39,14 @@ class InvoiceUpdate(BaseModel):
     sgst: Decimal | None = None
     igst: Decimal | None = None
     other_tax: Decimal | None = None
+    discount_amount: Decimal | None = None
     category_id: int | None = None
     sub_category_id: int | None = None
 
 
 class PaymentUpdate(BaseModel):
     payment_date: dt.date | None = None
+    amount: Decimal | None = None
     account_id: int | None = None
     payment_mode: str | None = None
     reference_number: str | None = None

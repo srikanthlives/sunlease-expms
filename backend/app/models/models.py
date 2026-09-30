@@ -266,6 +266,7 @@ class Expense(Base):
     base_amount = Column(Numeric(14, 2), nullable=False, default=0)
     gst_amount = Column(Numeric(14, 2), nullable=False, default=0)
     other_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    discount_amount = Column(Numeric(14, 2), nullable=False, default=0)  # subtracted: total = base + gst + other - discount
     total_amount = Column(Numeric(14, 2), nullable=False)
 
     status = Column(String(20), default="ACTIVE")  # ACTIVE / CANCELLED
@@ -312,6 +313,7 @@ class Invoice(Base):
     sgst = Column(Numeric(14, 2), nullable=False, default=0)
     igst = Column(Numeric(14, 2), nullable=False, default=0)
     other_tax = Column(Numeric(14, 2), nullable=False, default=0)
+    discount_amount = Column(Numeric(14, 2), nullable=False, default=0)  # subtracted from the total
     total_amount = Column(Numeric(14, 2), nullable=False)
 
     status = Column(String(20), default="RECORDED")  # RECORDED / CANCELLED

@@ -9,6 +9,7 @@ from app.db.session import get_db
 from app.models.models import Invoice, Expense, User, Project, Vendor, ExpenseCategory, ExpenseSubCategory
 from app.schemas.transactions import InvoiceCreate, InvoiceOut, CancelRequest
 from app.schemas.edit_requests import InvoiceUpdate
+from app.core.multi import ids, strs, names
 from app.services import invoice_service, edit_request_service, project_scope_service, invoice_pdf_service
 from app.models.enums import RoleName
 
@@ -76,23 +77,23 @@ def _sort_rows(rows: list[Invoice], sort_by: str, sort_dir: str) -> list[Invoice
 def _apply_filters(
     q, *, vendor_id, project_id, category_id, sub_category_id, status_, date_from, date_to,
 ):
-    if vendor_id:
-        q = q.filter(Invoice.vendor_id == vendor_id)
-    if project_id:
-        q = q.filter(Invoice.project_id == project_id)
-    if status_:
-        q = q.filter(Invoice.status == status_)
+    if ids(vendor_id):
+        q = q.filter(Invoice.vendor_id.in_(ids(vendor_id)))
+    if ids(project_id):
+        q = q.filter(Invoice.project_id.in_(ids(project_id)))
+    if strs(status_):
+        q = q.filter(Invoice.status.in_(strs(status_)))
     if date_from:
         q = q.filter(Invoice.invoice_date >= date_from)
     if date_to:
         q = q.filter(Invoice.invoice_date <= date_to)
-    if category_id or sub_category_id:
+    if ids(category_id) or ids(sub_category_id):
         # Category/Sub-Category live on the linked Expense, not Invoice itself.
         q = q.join(Expense, Invoice.expense_id == Expense.id)
-        if category_id:
-            q = q.filter(Expense.category_id == category_id)
-        if sub_category_id:
-            q = q.filter(Expense.sub_category_id == sub_category_id)
+        if ids(category_id):
+            q = q.filter(Expense.category_id.in_(ids(category_id)))
+        if ids(sub_category_id):
+            q = q.filter(Expense.sub_category_id.in_(ids(sub_category_id)))
     return q
 
 
@@ -104,7 +105,7 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: 
         db, invoice_number=payload.invoice_number, po_number=payload.po_number, vendor_id=payload.vendor_id, invoice_date=payload.invoice_date,
         due_date=payload.due_date, project_id=payload.project_id, description=payload.description,
         taxable_amount=payload.taxable_amount, cgst=payload.cgst, sgst=payload.sgst, igst=payload.igst,
-        other_tax=payload.other_tax, category_id=payload.category_id, sub_category_id=payload.sub_category_id,
+        other_tax=payload.other_tax, discount_amount=payload.discount_amount, category_id=payload.category_id, sub_category_id=payload.sub_category_id,
         created_by=user.id, pay_immediately=payload.pay_immediately, payment_date=payload.payment_date,
         account_id=payload.account_id, payment_mode=payload.payment_mode, reference_number=payload.reference_number,
         remarks=payload.remarks,
@@ -117,8 +118,8 @@ def create_invoice(payload: InvoiceCreate, db: Session = Depends(get_db), user: 
 @router.get("", response_model=list[InvoiceOut], dependencies=[Depends(require_non_employee)])
 def list_invoices(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
-    sub_category_id: int | None = None,
+    vendor_id: str | None = None, project_id: str | None = None, category_id: str | None = None,
+    sub_category_id: str | None = None,
     status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
     page: int = Query(1, ge=1), page_size: int = Query(500, ge=1, le=500),
     sort_by: str | None = None, sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
@@ -144,8 +145,8 @@ def list_invoices(
 @router.get("/summary", dependencies=[Depends(require_non_employee)])
 def invoices_summary(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
-    sub_category_id: int | None = None,
+    vendor_id: str | None = None, project_id: str | None = None, category_id: str | None = None,
+    sub_category_id: str | None = None,
     status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
 ):
     """Aggregate totals over the FULL filtered result set (not just the
@@ -176,28 +177,24 @@ def _describe_filters(
     parts = []
     if date_from or date_to:
         parts.append(f"Date: {date_from or '…'} to {date_to or '…'}")
-    if vendor_id:
-        v = db.query(Vendor).filter(Vendor.id == vendor_id).first()
-        parts.append(f"Vendor: {v.vendor_name if v else vendor_id}")
-    if project_id:
-        p = db.query(Project).filter(Project.id == project_id).first()
-        parts.append(f"Project: {p.name if p else project_id}")
-    if category_id:
-        c = db.query(ExpenseCategory).filter(ExpenseCategory.id == category_id).first()
-        parts.append(f"Head: {c.name if c else category_id}")
-    if sub_category_id:
-        s = db.query(ExpenseSubCategory).filter(ExpenseSubCategory.id == sub_category_id).first()
-        parts.append(f"Sub-Head: {s.name if s else sub_category_id}")
-    if status_:
-        parts.append(f"Status: {status_}")
+    if ids(vendor_id):
+        parts.append(f"Vendor: {names(db, Vendor, 'vendor_name', vendor_id)}")
+    if ids(project_id):
+        parts.append(f"Project: {names(db, Project, 'name', project_id)}")
+    if ids(category_id):
+        parts.append(f"Head: {names(db, ExpenseCategory, 'name', category_id)}")
+    if ids(sub_category_id):
+        parts.append(f"Sub-Head: {names(db, ExpenseSubCategory, 'name', sub_category_id)}")
+    if strs(status_):
+        parts.append(f"Status: {', '.join(strs(status_))}")
     return "Filters: " + " | ".join(parts) if parts else "Filters: none (all invoices)"
 
 
 @router.get("/export-pdf", dependencies=[Depends(require_non_employee)])
 def export_invoices_pdf(
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
-    vendor_id: int | None = None, project_id: int | None = None, category_id: int | None = None,
-    sub_category_id: int | None = None,
+    vendor_id: str | None = None, project_id: str | None = None, category_id: str | None = None,
+    sub_category_id: str | None = None,
     status_: str | None = None, date_from: dt.date | None = None, date_to: dt.date | None = None,
     columns: str | None = Query(None, description="Comma-separated column keys - mirrors the frontend's visible (non-hidden) columns"),
 ):

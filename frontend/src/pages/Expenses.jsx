@@ -1,3 +1,4 @@
+import MultiSelect from "../components/MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
@@ -77,11 +78,11 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [bounds, setBounds] = useState(null);
   const [range, setRange] = useState(defaultMonthRange);
-  const [sourceType, setSourceType] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subCategoryId, setSubCategoryId] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("");
+  const [sourceType, setSourceType] = useState([]);
+  const [projectId, setProjectId] = useState([]);
+  const [categoryId, setCategoryId] = useState([]);
+  const [subCategoryId, setSubCategoryId] = useState([]);
+  const [paymentStatus, setPaymentStatus] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState(null); // { key, dir } - key matches a backend sort_by name
@@ -149,11 +150,11 @@ export default function Expenses() {
     const params = {};
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
-    if (sourceType) params.source_type = sourceType;
-    if (projectId) params.project_id = projectId;
-    if (categoryId) params.category_id = categoryId;
-    if (subCategoryId) params.sub_category_id = subCategoryId;
-    if (paymentStatus) params.payment_status = paymentStatus;
+    if (sourceType.length) params.source_type = sourceType.join(",");
+    if (projectId.length) params.project_id = projectId.join(",");
+    if (categoryId.length) params.category_id = categoryId.join(",");
+    if (subCategoryId.length) params.sub_category_id = subCategoryId.join(",");
+    if (paymentStatus.length) params.payment_status = paymentStatus.join(",");
     return params;
   }
 
@@ -169,7 +170,7 @@ export default function Expenses() {
   // empty or confusing table.
   useEffect(() => { setPage(1); }, [range.from, range.to, sourceType, projectId, categoryId, subCategoryId, paymentStatus, pageSize, sort]);
   // Selecting a different Head clears any Sub-Head that no longer belongs to it.
-  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+  useEffect(() => { setSubCategoryId([]); }, [categoryId]);
 
   const totalPages = summary ? Math.max(1, Math.ceil(summary.count / pageSize)) : 1;
 
@@ -217,26 +218,16 @@ export default function Expenses() {
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
         </div>
         <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
-          <Select label="Source" value={sourceType} onChange={(e) => setSourceType(e.target.value)} className="w-44">
-            <option value="">All Sources</option>
-            {SOURCE_TYPES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-          </Select>
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
-            <option value="">All Projects</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
-            <option value="">All Heads</option>
-            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
-          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
-            <option value="">All Sub-Heads</option>
-            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-          <Select label="Payment" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="w-44">
-            <option value="">All Payment Statuses</option>
-            {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-          </Select>
+          <MultiSelect label="Source" className="w-44" placeholder="All Sources" value={sourceType} onChange={setSourceType}
+            options={SOURCE_TYPES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
+          <MultiSelect label="Project" className="w-44" placeholder="All Projects" value={projectId} onChange={setProjectId}
+            options={masters.projects.map((p) => ({ value: p.id, label: p.name }))} />
+          <MultiSelect label="Head" className="w-44" placeholder="All Heads" value={categoryId} onChange={setCategoryId}
+            options={masters.categories.map((c) => ({ value: c.id, label: c.name }))} />
+          <MultiSelect label="Sub-Head" className="w-44" placeholder="All Sub-Heads" value={subCategoryId} onChange={setSubCategoryId} disabled={categoryId.length === 0}
+            options={masters.subCategories.filter((s) => categoryId.includes(String(s.category_id))).map((s) => ({ value: s.id, label: s.name }))} />
+          <MultiSelect label="Payment" className="w-44" placeholder="All Payment Statuses" value={paymentStatus} onChange={setPaymentStatus}
+            options={PAYMENT_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
         </div>
       </Card>
 
@@ -412,7 +403,7 @@ function ExpenseForm({ masters, onClose, onCreated }) {
     expense_date: new Date().toISOString().slice(0, 10),
     project_id: "", category_id: "", sub_category_id: "",
     supplier_name: "", bill_number: "",
-    description: "", base_amount: "", gst_amount: "0", other_amount: "0",
+    description: "", base_amount: "", gst_amount: "0", other_amount: "0", discount_amount: "0",
     pay_immediately: false, payment_date: new Date().toISOString().slice(0, 10),
     account_id: "", payment_mode: "NEFT", reference_number: "", remarks: "",
   });
@@ -420,6 +411,8 @@ function ExpenseForm({ masters, onClose, onCreated }) {
   const [busy, setBusy] = useState(false);
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
+
+  const total = Number(form.base_amount || 0) + Number(form.gst_amount || 0) + Number(form.other_amount || 0) - Number(form.discount_amount || 0);
 
   async function submit(e) {
     e.preventDefault();
@@ -436,6 +429,7 @@ function ExpenseForm({ masters, onClose, onCreated }) {
         base_amount: Number(form.base_amount),
         gst_amount: Number(form.gst_amount || 0),
         other_amount: Number(form.other_amount || 0),
+        discount_amount: Number(form.discount_amount || 0),
         account_id: form.pay_immediately ? Number(form.account_id) : null,
       };
       await client.post("/expenses", payload);
@@ -472,11 +466,13 @@ function ExpenseForm({ masters, onClose, onCreated }) {
           <Input label="Voucher / Bill No" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} />
         </div>
         <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-4 gap-4">
           <Input label="Base Amount" type="number" step="0.01" value={form.base_amount} onChange={(e) => set("base_amount", e.target.value)} required />
           <Input label="GST Amount" type="number" step="0.01" value={form.gst_amount} onChange={(e) => set("gst_amount", e.target.value)} />
           <Input label="Other Amount" type="number" step="0.01" value={form.other_amount} onChange={(e) => set("other_amount", e.target.value)} />
+          <Input label="Discount" type="number" step="0.01" min="0" value={form.discount_amount} onChange={(e) => set("discount_amount", e.target.value)} />
         </div>
+        <div className="text-sm text-ink/60">Total: <span className="tabular font-semibold text-ink">{formatMoney(total)}</span></div>
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.pay_immediately} onChange={(e) => set("pay_immediately", e.target.checked)} />
@@ -484,7 +480,8 @@ function ExpenseForm({ masters, onClose, onCreated }) {
         </label>
 
         {form.pay_immediately && (
-          <div className="grid grid-cols-3 gap-4 bg-brand-50 rounded-md p-4">
+          <div className="grid grid-cols-4 gap-4 bg-brand-50 rounded-md p-4">
+            <Input label="Payment Date" type="date" value={form.payment_date} onChange={(e) => set("payment_date", e.target.value)} required />
             <Select label="Account" value={form.account_id} onChange={(e) => set("account_id", e.target.value)} required>
               <option value="">Select…</option>
               {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}

@@ -1,3 +1,4 @@
+import MultiSelect from "../components/MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import client, { apiErrorMessage } from "../api/client";
@@ -67,9 +68,9 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
   // silently hide an older pending approval, so only the plain claims list
   // defaults to "this month" - approvalsOnly keeps the unbounded default.
   const [range, setRange] = useState(approvalsOnly ? { from: "", to: "" } : defaultMonthRange);
-  const [projectId, setProjectId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [claimStatus, setClaimStatus] = useState("");
+  const [projectId, setProjectId] = useState([]);
+  const [categoryId, setCategoryId] = useState([]);
+  const [claimStatus, setClaimStatus] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState(null);
@@ -98,9 +99,9 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
     if (approvalsOnly) params.pending_for_me = true;
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
-    if (projectId) params.project_id = projectId;
-    if (categoryId) params.category_id = categoryId;
-    if (claimStatus) params.status_ = claimStatus;
+    if (projectId.length) params.project_id = projectId.join(",");
+    if (categoryId.length) params.category_id = categoryId.join(",");
+    if (claimStatus.length) params.status_ = claimStatus.join(",");
     return params;
   }
 
@@ -165,18 +166,12 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
             <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
           </div>
           <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
-            <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
-              <option value="">All Projects</option>
-              {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </Select>
-            <Select label="Overall Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
-              <option value="">All Heads</option>
-              {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select label="Status" value={claimStatus} onChange={(e) => setClaimStatus(e.target.value)} className="w-44">
-              <option value="">All Statuses</option>
-              {CLAIM_STATUSES.map((s) => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
-            </Select>
+            <MultiSelect label="Project" className="w-44" placeholder="All Projects" value={projectId} onChange={setProjectId}
+              options={masters.projects.map((p) => ({ value: p.id, label: p.name }))} />
+            <MultiSelect label="Overall Head" className="w-44" placeholder="All Heads" value={categoryId} onChange={setCategoryId}
+              options={masters.categories.map((c) => ({ value: c.id, label: c.name }))} />
+            <MultiSelect label="Status" className="w-44" placeholder="All Statuses" value={claimStatus} onChange={setClaimStatus}
+              options={CLAIM_STATUSES.map((s) => ({ value: s, label: s.replace(/_/g, " ") }))} />
           </div>
         </Card>
       )}

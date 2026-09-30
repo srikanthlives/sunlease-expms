@@ -1,3 +1,4 @@
+import MultiSelect from "../components/MultiSelect";
 import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
@@ -68,12 +69,12 @@ export default function Payments() {
   const [editingPayment, setEditingPayment] = useState(null);
   const [bounds, setBounds] = useState(null);
   const [range, setRange] = useState(defaultMonthRange);
-  const [accountId, setAccountId] = useState("");
-  const [paymentMode, setPaymentMode] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [projectId, setProjectId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subCategoryId, setSubCategoryId] = useState("");
+  const [accountId, setAccountId] = useState([]);
+  const [paymentMode, setPaymentMode] = useState([]);
+  const [statusFilter, setStatusFilter] = useState([]);
+  const [projectId, setProjectId] = useState([]);
+  const [categoryId, setCategoryId] = useState([]);
+  const [subCategoryId, setSubCategoryId] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState(null);
@@ -117,12 +118,12 @@ export default function Payments() {
     const params = {};
     if (range.from) params.date_from = range.from;
     if (range.to) params.date_to = range.to;
-    if (accountId) params.account_id = accountId;
-    if (paymentMode) params.payment_mode = paymentMode;
-    if (statusFilter) params.is_cancelled = statusFilter === "CANCELLED";
-    if (projectId) params.project_id = projectId;
-    if (categoryId) params.category_id = categoryId;
-    if (subCategoryId) params.sub_category_id = subCategoryId;
+    if (accountId.length) params.account_id = accountId.join(",");
+    if (paymentMode.length) params.payment_mode = paymentMode.join(",");
+    if (statusFilter.length === 1) params.is_cancelled = statusFilter[0] === "CANCELLED";
+    if (projectId.length) params.project_id = projectId.join(",");
+    if (categoryId.length) params.category_id = categoryId.join(",");
+    if (subCategoryId.length) params.sub_category_id = subCategoryId.join(",");
     return params;
   }
 
@@ -135,7 +136,7 @@ export default function Payments() {
   useEffect(load, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId, page, pageSize, sort]);
   useEffect(() => { setPage(1); }, [range.from, range.to, accountId, paymentMode, statusFilter, projectId, categoryId, subCategoryId, pageSize, sort]);
   // Selecting a different Head clears any Sub-Head that no longer belongs to it.
-  useEffect(() => { setSubCategoryId(""); }, [categoryId]);
+  useEffect(() => { setSubCategoryId([]); }, [categoryId]);
 
   async function downloadPdf() {
     const visibleColumns = TOGGLEABLE_COLUMNS.map((c) => c.key).filter((k) => k !== "attachments" && !hiddenCols.has(k));
@@ -191,31 +192,18 @@ export default function Payments() {
           <DateRangePicker value={range} onChange={setRange} bounds={bounds} />
         </div>
         <div className="flex flex-wrap items-end gap-4 mt-4 pt-4 border-t border-ink/10">
-          <Select label="Project" value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-44">
-            <option value="">All Projects</option>
-            {masters.projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </Select>
-          <Select label="Head" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-44">
-            <option value="">All Heads</option>
-            {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
-          <Select label="Sub-Head" value={subCategoryId} onChange={(e) => setSubCategoryId(e.target.value)} disabled={!categoryId} className="w-44">
-            <option value="">All Sub-Heads</option>
-            {masters.subCategories.filter((s) => String(s.category_id) === String(categoryId)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-          <Select label="Account" value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-44">
-            <option value="">All Accounts</option>
-            {masters.accounts.map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>)}
-          </Select>
-          <Select label="Mode" value={paymentMode} onChange={(e) => setPaymentMode(e.target.value)} className="w-44">
-            <option value="">All Modes</option>
-            {PAYMENT_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </Select>
-          <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-44">
-            <option value="">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="CANCELLED">Cancelled</option>
-          </Select>
+          <MultiSelect label="Project" className="w-44" placeholder="All Projects" value={projectId} onChange={setProjectId}
+            options={masters.projects.map((p) => ({ value: p.id, label: p.name }))} />
+          <MultiSelect label="Head" className="w-44" placeholder="All Heads" value={categoryId} onChange={setCategoryId}
+            options={masters.categories.map((c) => ({ value: c.id, label: c.name }))} />
+          <MultiSelect label="Sub-Head" className="w-44" placeholder="All Sub-Heads" value={subCategoryId} onChange={setSubCategoryId} disabled={categoryId.length === 0}
+            options={masters.subCategories.filter((s) => categoryId.includes(String(s.category_id))).map((s) => ({ value: s.id, label: s.name }))} />
+          <MultiSelect label="Account" className="w-44" placeholder="All Accounts" value={accountId} onChange={setAccountId}
+            options={masters.accounts.map((a) => ({ value: a.id, label: a.account_name }))} />
+          <MultiSelect label="Mode" className="w-44" placeholder="All Modes" value={paymentMode} onChange={setPaymentMode}
+            options={PAYMENT_MODES.map((m) => ({ value: m, label: m }))} />
+          <MultiSelect label="Status" className="w-44" placeholder="All Statuses" value={statusFilter} onChange={setStatusFilter}
+            options={[{ value: "ACTIVE", label: "Active" }, { value: "CANCELLED", label: "Cancelled" }]} />
         </div>
       </Card>
 
@@ -370,10 +358,12 @@ function PaymentForm({ masters, onClose, onCreated }) {
       return;
     }
     const id = payeeType === "vendor" ? form.vendor_id : form.employee_id;
-    if (!id) { setOutstanding([]); return; }
-    const params = payeeType === "vendor" ? { vendor_id: id } : { employee_id: id };
+    // No vendor/employee picked: list every unpaid expense belonging to any
+    // vendor (or any employee), so they can be paid in one go.
+    const params = id ? (payeeType === "vendor" ? { vendor_id: id } : { employee_id: id }) : {};
     client.get("/expenses", { params: { ...params, status: "ACTIVE" } }).then((res) => {
-      setOutstanding(res.data.filter((e) => e.payment_status !== "PAID"));
+      setOutstanding(res.data.filter((e) => e.payment_status !== "PAID" &&
+        (id || (payeeType === "vendor" ? e.vendor_id : e.employee_id))));
     });
   }, [form.vendor_id, form.employee_id, payeeType]);
 
@@ -398,10 +388,17 @@ function PaymentForm({ masters, onClose, onCreated }) {
     setBusy(true);
     setError("");
     try {
+      // With no payee picked, tag the payment with the payee only if every
+      // allocated expense belongs to the same one.
+      const picked = allocations.map((a) => outstanding.find((e) => e.id === a.expense_id)).filter(Boolean);
+      const commonId = (key) => {
+        const ids = new Set(picked.map((e) => e[key]));
+        return ids.size === 1 ? [...ids][0] : null;
+      };
       await client.post("/payments", {
         ...form,
-        vendor_id: payeeType === "vendor" ? Number(form.vendor_id) : null,
-        employee_id: payeeType === "employee" ? Number(form.employee_id) : null,
+        vendor_id: payeeType === "vendor" ? (form.vendor_id ? Number(form.vendor_id) : commonId("vendor_id")) : null,
+        employee_id: payeeType === "employee" ? (form.employee_id ? Number(form.employee_id) : commonId("employee_id")) : null,
         account_id: Number(form.account_id),
         // "direct" payee type has no vendor/employee on the payment itself -
         // the link to the payee (if any) lives on the expense, not here.
@@ -427,14 +424,14 @@ function PaymentForm({ masters, onClose, onCreated }) {
         </div>
         <div className="grid grid-cols-3 gap-4">
           {payeeType === "vendor" && (
-            <Select label="Vendor" value={form.vendor_id} onChange={(e) => { set("vendor_id", e.target.value); setAllocations([]); }} required>
-              <option value="">Select…</option>
+            <Select label="Vendor" value={form.vendor_id} onChange={(e) => { set("vendor_id", e.target.value); setAllocations([]); }}>
+              <option value="">All vendors</option>
               {masters.vendors.map((v) => <option key={v.id} value={v.id}>{vendorLabel(v)}</option>)}
             </Select>
           )}
           {payeeType === "employee" && (
-            <Select label="Employee" value={form.employee_id} onChange={(e) => { set("employee_id", e.target.value); setAllocations([]); }} required>
-              <option value="">Select…</option>
+            <Select label="Employee" value={form.employee_id} onChange={(e) => { set("employee_id", e.target.value); setAllocations([]); }}>
+              <option value="">All employees</option>
               {masters.employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.employee_name}</option>)}
             </Select>
           )}
@@ -460,6 +457,15 @@ function PaymentForm({ masters, onClose, onCreated }) {
                   {e.expense_number}
                   {e.source_type === "EXPENSE" && e.source_id != null && <span className="text-brand-700"> (Recurring)</span>}
                   {e.supplier_name && <span className="text-ink/50"> · {e.supplier_name}</span>}
+                  {!(payeeType === "vendor" ? form.vendor_id : payeeType === "employee" ? form.employee_id : "") && payeeType !== "direct" && (
+                    <span className="text-ink/50"> · {payeeType === "vendor"
+                      ? (() => { const v = masters.vendors.find((v) => v.id === e.vendor_id); return v ? vendorLabel(v) : null; })()
+                      : masters.employees.find((m) => m.id === e.employee_id)?.employee_name}</span>
+                  )}
+                  {e.bill_number && <span className="text-ink/50"> · Bill {e.bill_number}</span>}
+                  {e.description && (
+                    <span className="text-ink/40 italic" title={e.description}> · {e.description.length > 40 ? e.description.slice(0, 40) + "…" : e.description}</span>
+                  )}
                   {" · Balance "}{formatMoney(e.balance_due)}
                   {e.payment_status === "PARTIALLY_PAID" && (
                     <span className="text-ink/40"> (of {formatMoney(e.total_amount)})</span>
@@ -473,7 +479,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
           <div className="text-xs text-ink/40">
             {payeeType === "direct"
               ? "No unpaid direct or recurring expenses (with no vendor or employee) found."
-              : "Select a " + payeeType + " above to see their outstanding expenses."}
+              : "No outstanding " + payeeType + " expenses found."}
           </div>
         )}
 

@@ -17,8 +17,12 @@ def create_expense_record(
     db: Session, *, source_type: str, source_id: int | None, expense_date, project_id, vendor_id,
     employee_id, category_id, sub_category_id, description, base_amount: Decimal, gst_amount: Decimal,
     other_amount: Decimal, created_by: int, supplier_name: str | None = None, bill_number: str | None = None,
+    discount_amount: Decimal = Decimal("0"),
 ) -> Expense:
-    total = Decimal(base_amount or 0) + Decimal(gst_amount or 0) + Decimal(other_amount or 0)
+    discount_amount = Decimal(discount_amount or 0)
+    if discount_amount < 0:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Discount cannot be negative")
+    total = Decimal(base_amount or 0) + Decimal(gst_amount or 0) + Decimal(other_amount or 0) - discount_amount
     if total <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Expense total amount must be greater than zero")
 
@@ -38,6 +42,7 @@ def create_expense_record(
         base_amount=base_amount or 0,
         gst_amount=gst_amount or 0,
         other_amount=other_amount or 0,
+        discount_amount=discount_amount,
         total_amount=total,
         status="ACTIVE",
         payment_status="UNPAID",
