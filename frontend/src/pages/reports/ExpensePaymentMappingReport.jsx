@@ -6,7 +6,7 @@ import { Card, Select, StatusBadge, formatMoney, formatDate } from "../../compon
 import DateRangePicker, { buildPresets } from "../../components/DateRangePicker";
 import MultiSelect from "../../components/MultiSelect";
 import Attachments from "../../components/Attachments";
-import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ChevronLeft, Wallet, Split } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, ChevronsDown, ChevronsUp, ChevronLeft, Wallet, Split, Receipt, FileCheck } from "lucide-react";
 
 const SOURCE_TYPES = ["EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
@@ -51,7 +51,7 @@ function ExpenseRow({ row, expanded, onToggle }) {
           <span className="flex justify-end"><StatusBadge status={row.payment_status} /></span>
         </button>
         <div className="w-10 shrink-0 flex justify-center" onClick={(e) => e.stopPropagation()}>
-          <Attachments {...expenseAttachmentsProps(row)} compact readOnly label="Proof / Bill" />
+          <Attachments {...expenseAttachmentsProps(row)} iconOnly icon={Receipt} readOnly label="Proof / Bill" />
         </div>
       </div>
 
@@ -80,7 +80,7 @@ function ExpenseRow({ row, expanded, onToggle }) {
                 )}
               </div>
               <div className="shrink-0">
-                <Attachments documentType="PAYMENT" paymentId={p.payment_id} compact readOnly label="Receipt" />
+                <Attachments documentType="PAYMENT" paymentId={p.payment_id} iconOnly icon={FileCheck} readOnly label="Payment receipt" />
               </div>
               <div className="shrink-0 text-right">
                 <div className="tabular font-medium">{formatMoney(p.allocated_amount)}</div>

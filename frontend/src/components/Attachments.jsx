@@ -16,7 +16,7 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
 export default function Attachments({
   documentType, expenseId, invoiceId, paymentId, claimId, claimLineId, claimFullId,
   quotationId, receivableInvoiceId,
-  label = "Attachments", compact = false, readOnly = false, canDelete = true,
+  label = "Attachments", compact = false, iconOnly = false, icon: Icon = Paperclip, readOnly = false, canDelete = true,
 }) {
   const [open, setOpen] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -100,18 +100,36 @@ export default function Attachments({
 
   return (
     <>
+      {iconOnly ? (
+        // Icon-only trigger for dense tables: label becomes the tooltip, count is a corner badge.
+        <button
+          type="button"
+          title={`${label}${docs.length ? ` (${docs.length})` : ""}`}
+          aria-label={label}
+          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+          className={`relative inline-flex items-center justify-center w-8 h-8 rounded-md border border-ink/15 hover:bg-brand-50 ${docs.length ? "text-brand-700" : "text-ink/35"}`}
+        >
+          <Icon size={15} />
+          {docs.length > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent-500 text-white text-[10px] font-semibold leading-none tabular">
+              {docs.length}
+            </span>
+          )}
+        </button>
+      ) : (
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         className={`relative inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium rounded-md border border-ink/15 hover:bg-brand-50 ${compact ? "px-2 py-1" : "px-2.5 py-1.5"}`}
       >
-        <Paperclip size={13} /> {label}
+        <Icon size={13} /> {label}
         {docs.length > 0 && (
           <span className="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-accent-500 text-white text-[10px] font-semibold leading-none tabular">
             {docs.length}
           </span>
         )}
       </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 bg-ink/40 z-40 flex items-center justify-center p-4" onClick={() => { setOpen(false); clearPendingFile(); setError(""); }}>

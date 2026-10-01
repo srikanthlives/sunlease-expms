@@ -416,13 +416,13 @@ function PaymentForm({ masters, onClose, onCreated }) {
     <Card className="relative">
       <button onClick={onClose} className="absolute top-4 right-4 text-ink/40 hover:text-ink"><X size={18} /></button>
       <h2 className="font-display font-semibold text-lg mb-4">New Payment</h2>
-      <form onSubmit={submit} className="space-y-4 max-w-3xl">
+      <form onSubmit={submit} className="space-y-4">
         <div className="flex gap-4 text-sm">
           <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "vendor"} onChange={() => { setPayeeType("vendor"); setAllocations([]); }} /> Vendor</label>
           <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "employee"} onChange={() => { setPayeeType("employee"); setAllocations([]); }} /> Employee</label>
           <label className="flex items-center gap-1.5"><input type="radio" checked={payeeType === "direct"} onChange={() => { setPayeeType("direct"); setAllocations([]); }} /> Direct / Recurring Expense (no vendor/employee)</label>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4 max-w-3xl">
           {payeeType === "vendor" && (
             <Select label="Vendor" value={form.vendor_id} onChange={(e) => { set("vendor_id", e.target.value); setAllocations([]); }}>
               <option value="">All vendors</option>
@@ -459,7 +459,7 @@ function PaymentForm({ masters, onClose, onCreated }) {
                 const recurring = e.source_type === "EXPENSE" && e.source_id != null;
                 return (
                   <button type="button" key={e.id} onClick={() => addAllocation(e.id)} disabled={picked}
-                    className="w-full grid items-center gap-3 px-3 py-1.5 text-xs text-left whitespace-nowrap hover:bg-brand-50 disabled:opacity-40 disabled:hover:bg-transparent grid-cols-[8rem_minmax(6rem,1fr)_6rem_minmax(8rem,1.5fr)_6rem_6rem_7rem]">
+                    className="w-full grid items-center gap-3 px-3 py-1.5 text-xs text-left whitespace-nowrap hover:bg-brand-50 disabled:opacity-40 disabled:hover:bg-transparent grid-cols-[9rem_minmax(10rem,1fr)_8rem_minmax(14rem,2fr)_7rem_8rem_8rem]">
                     <span className="font-medium truncate">{e.expense_number}{recurring && <span className="text-brand-700"> (Rec.)</span>}</span>
                     <span className="text-ink/60 truncate" title={payee || ""}>{payee || "—"}</span>
                     <span className="text-ink/50 truncate" title={e.bill_number || ""}>{e.bill_number ? `Bill ${e.bill_number}` : "—"}</span>
