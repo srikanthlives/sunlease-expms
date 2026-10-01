@@ -449,30 +449,27 @@ function PaymentForm({ masters, onClose, onCreated }) {
         {outstanding.length > 0 ? (
           <div>
             <div className="text-xs font-medium text-ink/60 mb-2">Outstanding Expenses — click to allocate</div>
-            <div className="flex flex-wrap gap-2">
-              {outstanding.map((e) => (
-                <button type="button" key={e.id} onClick={() => addAllocation(e.id)}
-                  className="text-xs border border-ink/15 rounded-md px-2.5 py-1.5 hover:bg-brand-50 disabled:opacity-30"
-                  disabled={!!allocations.find((a) => a.expense_id === e.id)}>
-                  {e.expense_number}
-                  {e.source_type === "EXPENSE" && e.source_id != null && <span className="text-brand-700"> (Recurring)</span>}
-                  {e.supplier_name && <span className="text-ink/50"> · {e.supplier_name}</span>}
-                  {!(payeeType === "vendor" ? form.vendor_id : payeeType === "employee" ? form.employee_id : "") && payeeType !== "direct" && (
-                    <span className="text-ink/50"> · {payeeType === "vendor"
-                      ? (() => { const v = masters.vendors.find((v) => v.id === e.vendor_id); return v ? vendorLabel(v) : null; })()
-                      : masters.employees.find((m) => m.id === e.employee_id)?.employee_name}</span>
-                  )}
-                  {e.bill_number && <span className="text-ink/50"> · Bill {e.bill_number}</span>}
-                  {e.description && (
-                    <span className="text-ink/40 italic" title={e.description}> · {e.description.length > 40 ? e.description.slice(0, 40) + "…" : e.description}</span>
-                  )}
-                  {" · Balance "}{formatMoney(e.balance_due)}
-                  {e.payment_status === "PARTIALLY_PAID" && (
-                    <span className="text-ink/40"> (of {formatMoney(e.total_amount)})</span>
-                  )}
-                  {" "}<span className="text-ink/40">({e.payment_status})</span>
-                </button>
-              ))}
+            <div className="border border-ink/15 rounded-md max-h-72 overflow-auto divide-y divide-ink/10">
+              {outstanding.map((e) => {
+                const picked = !!allocations.find((a) => a.expense_id === e.id);
+                const anyPayee = payeeType === "vendor" ? form.vendor_id : payeeType === "employee" ? form.employee_id : "";
+                const payee = anyPayee || payeeType === "direct" ? e.supplier_name : (payeeType === "vendor"
+                  ? (() => { const v = masters.vendors.find((v) => v.id === e.vendor_id); return v ? vendorLabel(v) : null; })()
+                  : masters.employees.find((m) => m.id === e.employee_id)?.employee_name);
+                const recurring = e.source_type === "EXPENSE" && e.source_id != null;
+                return (
+                  <button type="button" key={e.id} onClick={() => addAllocation(e.id)} disabled={picked}
+                    className="w-full grid items-center gap-3 px-3 py-1.5 text-xs text-left whitespace-nowrap hover:bg-brand-50 disabled:opacity-40 disabled:hover:bg-transparent grid-cols-[8rem_minmax(6rem,1fr)_6rem_minmax(8rem,1.5fr)_6rem_6rem_7rem]">
+                    <span className="font-medium truncate">{e.expense_number}{recurring && <span className="text-brand-700"> (Rec.)</span>}</span>
+                    <span className="text-ink/60 truncate" title={payee || ""}>{payee || "—"}</span>
+                    <span className="text-ink/50 truncate" title={e.bill_number || ""}>{e.bill_number ? `Bill ${e.bill_number}` : "—"}</span>
+                    <span className="text-ink/40 italic truncate" title={e.description || ""}>{e.description || "—"}</span>
+                    <span className="text-right tabular">{formatMoney(e.balance_due)}</span>
+                    <span className="text-right tabular text-ink/40">{e.payment_status === "PARTIALLY_PAID" ? `of ${formatMoney(e.total_amount)}` : ""}</span>
+                    <span className="text-right text-ink/40">{e.payment_status.replace(/_/g, " ")}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ) : (

@@ -12,6 +12,9 @@ const SOURCE_TYPES = ["EXPENSE", "INVOICE", "EMPLOYEE_CLAIM"];
 const PAYMENT_STATUSES = ["UNPAID", "PARTIALLY_PAID", "PAID"];
 const PAGE_SIZES = [25, 50, 100];
 
+// One shared column template for header and rows so every value lines up.
+const GRID = "grid items-center gap-3 grid-cols-[1rem_7rem_5.5rem_7rem_6.5rem_minmax(7rem,1fr)_minmax(9rem,1.4fr)_minmax(8rem,1fr)_6.5rem_6.5rem_6.5rem_7.5rem]";
+
 function expenseAttachmentsProps(row) {
   if (row.source_type === "INVOICE") return { documentType: "INVOICE", invoiceId: row.source_id };
   if (row.source_type === "EMPLOYEE_CLAIM") return { claimFullId: row.source_id };
@@ -26,28 +29,28 @@ function ExpenseRow({ row, expanded, onToggle }) {
         <button
           type="button"
           onClick={() => hasPayments && onToggle(row.expense_id)}
-          className={`flex items-center gap-3 flex-1 min-w-0 text-left ${hasPayments ? "cursor-pointer" : "cursor-default"}`}
+          className={`${GRID} flex-1 min-w-0 text-left ${hasPayments ? "cursor-pointer" : "cursor-default"}`}
         >
-          <span className="w-4 shrink-0 text-ink/30">
+          <span className="text-ink/30">
             {hasPayments ? (expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />) : null}
           </span>
-          <span className="w-32 shrink-0 font-medium text-sm">{row.expense_number}</span>
-          <span className="w-24 shrink-0 text-xs text-ink/50 whitespace-nowrap">{formatDate(row.expense_date)}</span>
-          <span className="w-32 shrink-0 text-[11px] text-ink/40 uppercase whitespace-nowrap overflow-hidden text-ellipsis" title={row.source_type.replace(/_/g, " ")}>
+          <span className="font-medium text-sm truncate" title={row.expense_number}>{row.expense_number}</span>
+          <span className="text-xs text-ink/50 whitespace-nowrap">{formatDate(row.expense_date)}</span>
+          <span className="text-[11px] text-ink/40 uppercase truncate" title={row.source_type.replace(/_/g, " ")}>
             {row.source_type.replace(/_/g, " ")}
           </span>
-          <span className="w-28 shrink-0 truncate text-sm" title={row.bill_number || ""}>{row.bill_number || "—"}</span>
-          <span className="flex-1 min-w-0 truncate text-sm" title={row.payee}>{row.payee}</span>
-          <span className="flex-1 min-w-0 truncate text-xs text-ink/60" title={row.description || ""}>{row.description || "—"}</span>
-          <span className="w-40 shrink-0 truncate text-xs text-ink/50" title={`${row.category_name}${row.sub_category_name ? " / " + row.sub_category_name : ""}`}>
+          <span className="text-sm truncate" title={row.bill_number || ""}>{row.bill_number || "—"}</span>
+          <span className="text-sm truncate" title={row.payee}>{row.payee}</span>
+          <span className="text-xs text-ink/60 truncate" title={row.description || ""}>{row.description || "—"}</span>
+          <span className="text-xs text-ink/50 truncate" title={`${row.category_name}${row.sub_category_name ? " / " + row.sub_category_name : ""}`}>
             {row.category_name}{row.sub_category_name ? ` / ${row.sub_category_name}` : ""}
           </span>
-          <span className="w-28 shrink-0 text-right tabular text-sm">{formatMoney(row.total_amount)}</span>
-          <span className="w-28 shrink-0 text-right tabular text-sm text-ok">{formatMoney(row.paid_amount)}</span>
-          <span className="w-28 shrink-0 text-right tabular text-sm text-warn">{formatMoney(row.balance_due)}</span>
-          <span className="w-32 shrink-0 flex justify-end"><StatusBadge status={row.payment_status} /></span>
+          <span className="text-right tabular text-sm">{formatMoney(row.total_amount)}</span>
+          <span className="text-right tabular text-sm text-ok">{formatMoney(row.paid_amount)}</span>
+          <span className="text-right tabular text-sm text-warn">{formatMoney(row.balance_due)}</span>
+          <span className="flex justify-end"><StatusBadge status={row.payment_status} /></span>
         </button>
-        <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="w-10 shrink-0 flex justify-center" onClick={(e) => e.stopPropagation()}>
           <Attachments {...expenseAttachmentsProps(row)} compact readOnly label="Proof / Bill" />
         </div>
       </div>
@@ -196,19 +199,24 @@ export default function ExpensePaymentMappingReport() {
               </div>
             </div>
 
+            <div className="overflow-x-auto">
+            <div className="min-w-[1250px]">
             <div className="flex items-center gap-3 px-3 py-2 border-b border-ink/10 text-[11px] uppercase tracking-wide text-ink/40 font-medium">
-              <span className="w-4 shrink-0" />
-              <span className="w-32 shrink-0">Expense #</span>
-              <span className="w-24 shrink-0">Date</span>
-              <span className="w-32 shrink-0">Source</span>
-              <span className="w-28 shrink-0">Bill No</span>
-              <span className="flex-1 min-w-0">Payee</span>
-              <span className="flex-1 min-w-0">Description</span>
-              <span className="w-40 shrink-0">Head / Sub-Head</span>
-              <span className="w-28 shrink-0 text-right">Amount</span>
-              <span className="w-28 shrink-0 text-right">Paid</span>
-              <span className="w-28 shrink-0 text-right">Balance</span>
-              <span className="w-32 shrink-0 text-right">Status</span>
+              <div className={`${GRID} flex-1`}>
+                <span />
+                <span>Expense #</span>
+                <span>Date</span>
+                <span>Source</span>
+                <span>Bill No</span>
+                <span>Payee</span>
+                <span>Description</span>
+                <span>Head / Sub-Head</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">Paid</span>
+                <span className="text-right">Balance</span>
+                <span className="text-right">Status</span>
+              </div>
+              <span className="w-10 shrink-0" />
             </div>
 
             {rows.length === 0 ? (
@@ -218,6 +226,8 @@ export default function ExpensePaymentMappingReport() {
                 <ExpenseRow key={row.expense_id} row={row} expanded={expandedIds.has(row.expense_id)} onToggle={toggle} />
               ))
             )}
+            </div>
+            </div>
 
             <div className="flex items-center justify-between mt-4 pt-3 border-t border-ink/10 text-sm text-ink/60">
               <div className="flex items-center gap-2">
