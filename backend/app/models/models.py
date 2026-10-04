@@ -231,8 +231,57 @@ class Account(Base):
     bank_name = Column(String(255))
     ifsc = Column(String(20))
     is_active = Column(Boolean, default=True)
+    # Fund tracking (Super Admin "Funds" section): which funding entity this
+    # account belongs to, and the balance it started with.
+    funding_entity_id = Column(Integer, ForeignKey("funding_entities.id"), nullable=True)
+    opening_balance = Column(Numeric(14, 2), default=0, nullable=False, server_default="0")
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
+
+    funding_entity = relationship("FundingEntity", back_populates="accounts")
+
+
+class FundingEntity(Base):
+    """A party that funds the business (promoter, investor, group company...).
+    Several Accounts can belong to one entity; funding is reported grouped
+    under the entity's single name."""
+
+    __tablename__ = "funding_entities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    notes = Column(Text)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now)
+
+    accounts = relationship("Account", back_populates="funding_entity")
+
+
+class FundTransfer(Base):
+    """Money movement between accounts. kind=FUNDING is money coming in from
+    a funding entity (to_account only); kind=TRANSFER moves money from one of
+    our accounts to another. Cancelled, never deleted."""
+
+    __tablename__ = "fund_transfers"
+
+    id = Column(Integer, primary_key=True)
+    transfer_number = Column(String(50), unique=True, nullable=False, index=True)
+    transfer_date = Column(Date, nullable=False)
+    kind = Column(String(20), nullable=False)  # FUNDING / TRANSFER
+    from_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    funding_entity_id = Column(Integer, ForeignKey("funding_entities.id"), nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    reference_number = Column(String(150))
+    remarks = Column(Text)
+    is_cancelled = Column(Boolean, default=False)
+    cancel_reason = Column(Text)
+    created_by = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=now)
+
+    from_account = relationship("Account", foreign_keys=[from_account_id])
+    to_account = relationship("Account", foreign_keys=[to_account_id])
+    funding_entity = relationship("FundingEntity", foreign_keys=[funding_entity_id])
 
 
 # ---------------------------------------------------------------------------

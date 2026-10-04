@@ -23,12 +23,18 @@ import EditRequests from "./pages/EditRequests";
 import RecurringExpenses from "./pages/RecurringExpenses";
 import RecurringExpenseApprovals from "./pages/RecurringExpenseApprovals";
 import BulkImport from "./pages/BulkImport";
+import Funds from "./pages/Funds";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-ink/40 text-sm">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   return children;
+}
+
+function RequireRole({ roles, children }) {
+  const { user } = useAuth();
+  return roles.includes(user?.role) ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -72,6 +78,7 @@ export default function App() {
             <Route path="edit-requests" element={<EditRequests />} />
             <Route path="recurring-expenses" element={<RecurringExpenses />} />
             <Route path="recurring-expenses/approvals" element={<RecurringExpenseApprovals />} />
+            <Route path="funds" element={<RequireRole roles={["SUPER_ADMIN"]}><Funds /></RequireRole>} />
             <Route path="bulk-import" element={<BulkImport />} />
           </Route>
         </Routes>
