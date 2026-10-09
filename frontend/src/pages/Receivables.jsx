@@ -297,9 +297,9 @@ function QuotationsTab({ canManage }) {
                 </span>
               ) : "—",
             },
-            { key: "taxable_amount", header: "Taxable Value", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
-            { key: "tax", header: "GST", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
+            { key: "taxable_amount", header: "Taxable Value", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
+            { key: "tax", header: "GST", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
+            { key: "total_amount", header: "Amount", align: "right", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             { key: "receivable_invoice_number", header: "Invoice", render: (r) => <span className="whitespace-nowrap">{r.receivable_invoice_number || "—"}</span> },
             {
@@ -590,11 +590,11 @@ function InvoicesTab({ canManage }) {
                 </span>
               ) : "—",
             },
-            { key: "taxable_amount", header: "Taxable Value", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
-            { key: "tax", header: "GST", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
-            { key: "total_amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
-            { key: "paid_amount", header: "Received", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.paid_amount)}</span> },
-            { key: "balance_due", header: "Balance", render: (r) => <span className="tabular font-medium whitespace-nowrap">{formatMoney(r.balance_due)}</span> },
+            { key: "taxable_amount", header: "Taxable Value", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
+            { key: "tax", header: "GST", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
+            { key: "total_amount", header: "Amount", align: "right", render: (r) => <span className="tabular whitespace-nowrap font-medium">{formatMoney(r.total_amount)}</span> },
+            { key: "paid_amount", header: "Received", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.paid_amount)}</span> },
+            { key: "balance_due", header: "Balance", align: "right", render: (r) => <span className="tabular font-medium whitespace-nowrap">{formatMoney(r.balance_due)}</span> },
             { key: "payment_status", header: "Payment", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.payment_status} /></span> },
             { key: "status", header: "Status", render: (r) => <span className="whitespace-nowrap"><StatusBadge status={r.status} /></span> },
             {
@@ -951,7 +951,7 @@ function PaymentsTab({ canManage }) {
               key: "reference_number", header: "Reference",
               render: (r) => { const text = r.reference_number || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
             },
-            { key: "amount", header: "Amount", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.amount)}</span> },
+            { key: "amount", header: "Amount", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.amount)}</span> },
             {
               key: "allocations", header: "Allocated To",
               render: (r) => { const text = r.allocations.map((a) => a.invoice_number || `#${a.receivable_invoice_id}`).join(", "); return <span title={text} className="block max-w-[220px] truncate">{text}</span>; },

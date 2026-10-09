@@ -16,7 +16,7 @@ function ResultTable({ rows }) {
     { key: "expense_number", header: "Expense #", render: (r) => r.expense_number || "—" },
     { key: "invoice_number", header: "Invoice #", render: (r) => r.invoice_number || "—" },
     { key: "payment_number", header: "Payment #", render: (r) => r.payment_number || "—" },
-    { key: "total_amount", header: "Amount", render: (r) => (r.total_amount ? formatMoney(r.total_amount) : "—") },
+    { key: "total_amount", header: "Amount", align: "right", render: (r) => (r.total_amount ? formatMoney(r.total_amount) : "—") },
     {
       key: "errors", header: "Details", render: (r) =>
         r.errors?.length ? <span className="text-danger text-xs">{r.errors.join("; ")}</span> : "",

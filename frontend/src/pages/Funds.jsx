@@ -41,13 +41,13 @@ function BalanceSheet() {
   const t = data.totals;
   const cols = [
     { key: "account_name", label: "Account" },
-    { key: "opening_balance", label: "Opening", render: (r) => money(r.opening_balance) },
-    { key: "funded", label: "Funded", render: (r) => money(r.funded) },
-    { key: "transfers_in", label: "Transfers In", render: (r) => money(r.transfers_in) },
-    { key: "receipts", label: "Receipts", render: (r) => money(r.receipts) },
-    { key: "transfers_out", label: "Transfers Out", render: (r) => money(r.transfers_out) },
-    { key: "payments", label: "Payments", render: (r) => money(r.payments) },
-    { key: "balance", label: "Balance", render: (r) => <span className="tabular font-semibold">{formatMoney(r.balance)}</span> },
+    { key: "opening_balance", label: "Opening", align: "right", render: (r) => money(r.opening_balance) },
+    { key: "funded", label: "Funded", align: "right", render: (r) => money(r.funded) },
+    { key: "transfers_in", label: "Transfers In", align: "right", render: (r) => money(r.transfers_in) },
+    { key: "receipts", label: "Receipts", align: "right", render: (r) => money(r.receipts) },
+    { key: "transfers_out", label: "Transfers Out", align: "right", render: (r) => money(r.transfers_out) },
+    { key: "payments", label: "Payments", align: "right", render: (r) => money(r.payments) },
+    { key: "balance", label: "Balance", align: "right", render: (r) => <span className="tabular font-semibold">{formatMoney(r.balance)}</span> },
   ];
   return (
     <div className="space-y-5">
@@ -152,7 +152,7 @@ function Transfers({ accounts, entities }) {
     { key: "kind", label: "Type", render: (r) => (r.kind === "FUNDING" ? "Funding" : "Transfer") },
     { key: "from_account_name", label: "From", render: (r) => r.kind === "FUNDING" ? (r.funding_entity_name || "—") : r.from_account_name },
     { key: "to_account_name", label: "To" },
-    { key: "amount", label: "Amount", render: (r) => <span className={`tabular ${r.is_cancelled ? "line-through text-ink/40" : ""}`}>{formatMoney(r.amount)}</span> },
+    { key: "amount", label: "Amount", align: "right", render: (r) => <span className={`tabular ${r.is_cancelled ? "line-through text-ink/40" : ""}`}>{formatMoney(r.amount)}</span> },
     { key: "reference_number", label: "Ref" },
     { key: "remarks", label: "Remarks", render: (r) => r.is_cancelled ? <span className="text-danger">Cancelled: {r.cancel_reason}</span> : r.remarks },
     { key: "_a", label: "", render: (r) => !r.is_cancelled && <button title="Cancel" onClick={() => cancel(r)} className="text-ink/40 hover:text-danger"><Ban size={15} /></button> },
@@ -199,7 +199,7 @@ function Accounts({ accounts, entities, reload }) {
     { key: "account_name", label: "Account" },
     { key: "account_type", label: "Type" },
     { key: "funding_entity_name", label: "Funding Entity", render: (r) => r.funding_entity_name || "—" },
-    { key: "opening_balance", label: "Opening Balance", render: (r) => money(r.opening_balance) },
+    { key: "opening_balance", label: "Opening Balance", align: "right", render: (r) => money(r.opening_balance) },
     { key: "is_active", label: "Status", render: (r) => (r.is_active ? "Active" : "Inactive") },
     { key: "_a", label: "", render: (r) => <button onClick={() => open(r)} className="text-ink/40 hover:text-ink"><Pencil size={15} /></button> },
   ];

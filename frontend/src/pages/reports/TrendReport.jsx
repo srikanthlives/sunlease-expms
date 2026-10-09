@@ -93,12 +93,12 @@ export default function TrendReport() {
             <Table
               columns={[
                 { key: "label", header: "Month" },
-                { key: "invoices", header: "Invoices", render: (r) => <span className="tabular">{formatMoney(r.invoices)}</span> },
-                { key: "direct_expenses", header: "Direct", render: (r) => <span className="tabular">{formatMoney(r.direct_expenses)}</span> },
-                { key: "employee_claims", header: "Claims", render: (r) => <span className="tabular">{formatMoney(r.employee_claims)}</span> },
-                { key: "total_expense", header: "Total Expense", render: (r) => <span className="tabular font-medium">{formatMoney(r.total_expense)}</span> },
-                { key: "payments", header: "Payments", render: (r) => <span className="tabular">{formatMoney(r.payments)}</span> },
-                { key: "outstanding", header: "Outstanding", render: (r) => <span className="tabular">{formatMoney(r.outstanding)}</span> },
+                { key: "invoices", header: "Invoices", align: "right", render: (r) => <span className="tabular">{formatMoney(r.invoices)}</span> },
+                { key: "direct_expenses", header: "Direct", align: "right", render: (r) => <span className="tabular">{formatMoney(r.direct_expenses)}</span> },
+                { key: "employee_claims", header: "Claims", align: "right", render: (r) => <span className="tabular">{formatMoney(r.employee_claims)}</span> },
+                { key: "total_expense", header: "Total Expense", align: "right", render: (r) => <span className="tabular font-medium">{formatMoney(r.total_expense)}</span> },
+                { key: "payments", header: "Payments", align: "right", render: (r) => <span className="tabular">{formatMoney(r.payments)}</span> },
+                { key: "outstanding", header: "Outstanding", align: "right", render: (r) => <span className="tabular">{formatMoney(r.outstanding)}</span> },
               ]}
               rows={data.months}
               empty="No activity in this range."

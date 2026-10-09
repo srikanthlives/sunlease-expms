@@ -75,10 +75,10 @@ export default function EmployeeWiseReport() {
               columns={[
                 { key: "employee_name", header: "Employee" },
                 { key: "total_claims", header: "Claims" },
-                { key: "claimed", header: "Claimed", render: (r) => <span className="tabular">{formatMoney(r.claimed)}</span> },
-                { key: "approved", header: "Approved", render: (r) => <span className="tabular">{formatMoney(r.approved)}</span> },
-                { key: "paid", header: "Reimbursed", render: (r) => <span className="tabular">{formatMoney(r.paid)}</span> },
-                { key: "outstanding", header: "Outstanding", render: (r) => <span className="tabular font-medium">{formatMoney(r.outstanding)}</span> },
+                { key: "claimed", header: "Claimed", align: "right", render: (r) => <span className="tabular">{formatMoney(r.claimed)}</span> },
+                { key: "approved", header: "Approved", align: "right", render: (r) => <span className="tabular">{formatMoney(r.approved)}</span> },
+                { key: "paid", header: "Reimbursed", align: "right", render: (r) => <span className="tabular">{formatMoney(r.paid)}</span> },
+                { key: "outstanding", header: "Outstanding", align: "right", render: (r) => <span className="tabular font-medium">{formatMoney(r.outstanding)}</span> },
               ]}
               rows={rows}
               empty="No claims for this range."

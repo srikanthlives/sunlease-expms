@@ -197,7 +197,7 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
               render: (r) => <span className="block min-w-[260px] max-w-[420px] whitespace-normal break-words text-ink/60">{r.description || "—"}</span>,
             },
             { key: "claim_date", header: "Date", sortable: true, render: (r) => formatDate(r.claim_date) },
-            { key: "total_amount", header: "Amount", sortable: true, render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
+            { key: "total_amount", header: "Amount", align: "right", sortable: true, render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
             { key: "status", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.status} /> },
           ].filter((c) => c.key === "claim_number" || !hiddenCols.has(c.key))}
           rows={claims}
@@ -422,7 +422,7 @@ export function ClaimDetail() {
               key: "description", header: "Description",
               render: (r) => <span className="block min-w-[280px] max-w-[520px] whitespace-normal break-words">{r.description || "—"}</span>,
             },
-            { key: "amount", header: "Amount", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
+            { key: "amount", header: "Amount", align: "right", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
             {
               key: "proof", header: "Proof",
               render: (r) => <Attachments documentType="CLAIM_LINE" claimLineId={r.id} compact label="Screenshot / Proof" readOnly={!canEdit} />,

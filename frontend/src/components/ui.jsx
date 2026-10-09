@@ -274,10 +274,10 @@ export function Table({
               <th key={c.key} style={stickyHeadStyle(c)} className={`${headPad} font-medium whitespace-nowrap ${stickyHeader || c.stickyLeft ? "bg-white" : ""} ${c.align === "right" ? "text-right" : ""}`}>
                 {c.sortable ? (
                   <button type="button" onClick={() => toggleSort(c.key)} className={`inline-flex items-center gap-1 hover:text-ink/70 ${c.align === "right" ? "flex-row-reverse" : ""}`}>
-                    {c.header}
+                    {c.header ?? c.label}
                     {sort?.key === c.key ? (sort.dir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronsUpDown size={12} className="opacity-40" />}
                   </button>
-                ) : c.header}
+                ) : (c.header ?? c.label)}
               </th>
             ))}
           </tr>

@@ -107,7 +107,7 @@ export default function AccountWiseReport() {
                 { key: "account_name", header: "Account" },
                 { key: "account_type", header: "Type" },
                 { key: "payment_count", header: "Payments", render: (r) => <span className="tabular">{r.payment_count}</span> },
-                { key: "total_paid", header: "Amount Paid", render: (r) => <span className="tabular font-medium">{formatMoney(r.total_paid)}</span> },
+                { key: "total_paid", header: "Amount Paid", align: "right", render: (r) => <span className="tabular font-medium">{formatMoney(r.total_paid)}</span> },
               ]}
               rows={rows}
               empty="No payments for this filter."

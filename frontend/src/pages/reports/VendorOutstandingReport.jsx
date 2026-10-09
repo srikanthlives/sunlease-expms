@@ -74,9 +74,9 @@ export default function VendorOutstandingReport() {
             <Table
               columns={[
                 { key: "vendor_name", header: "Vendor" },
-                { key: "invoiced", header: "Invoiced", render: (r) => <span className="tabular">{formatMoney(r.invoiced)}</span> },
-                { key: "paid", header: "Paid", render: (r) => <span className="tabular">{formatMoney(r.paid)}</span> },
-                { key: "outstanding", header: "Outstanding", render: (r) => <span className="tabular font-medium">{formatMoney(r.outstanding)}</span> },
+                { key: "invoiced", header: "Invoiced", align: "right", render: (r) => <span className="tabular">{formatMoney(r.invoiced)}</span> },
+                { key: "paid", header: "Paid", align: "right", render: (r) => <span className="tabular">{formatMoney(r.paid)}</span> },
+                { key: "outstanding", header: "Outstanding", align: "right", render: (r) => <span className="tabular font-medium">{formatMoney(r.outstanding)}</span> },
               ]}
               rows={rows}
               empty="No vendor activity for this range."
