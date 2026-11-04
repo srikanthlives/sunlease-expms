@@ -258,19 +258,32 @@ class FundingEntity(Base):
 
 
 class FundTransfer(Base):
-    """Money movement between accounts. kind=FUNDING is money coming in from
-    a funding entity (to_account only); kind=TRANSFER moves money from one of
-    our accounts to another. Cancelled, never deleted."""
+    """Money movement, in three flavours (kind). Cancelled, never deleted.
+
+    - FUNDING    money coming IN from a funding entity -> to_account.
+                 from_account is null, funding_entity required.
+    - REPAYMENT  money going OUT from from_account -> back to a funding
+                 entity (repaying a director's loan, returning capital,
+                 settling an advance). to_account is null, funding_entity
+                 required. The mirror image of FUNDING.
+    - TRANSFER   moves money between two of our own accounts; both
+                 from_account and to_account set, funding_entity null.
+
+    funding_type classifies FUNDING/REPAYMENT rows (LOAN / CAPITAL /
+    ADVANCE / OTHER) so a director's loan account can be told apart from
+    equity introduced. Null on TRANSFER rows.
+    """
 
     __tablename__ = "fund_transfers"
 
     id = Column(Integer, primary_key=True)
     transfer_number = Column(String(50), unique=True, nullable=False, index=True)
     transfer_date = Column(Date, nullable=False)
-    kind = Column(String(20), nullable=False)  # FUNDING / TRANSFER
+    kind = Column(String(20), nullable=False)  # FUNDING / REPAYMENT / TRANSFER
     from_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
-    to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     funding_entity_id = Column(Integer, ForeignKey("funding_entities.id"), nullable=True)
+    funding_type = Column(String(20))  # LOAN / CAPITAL / ADVANCE / OTHER
     amount = Column(Numeric(14, 2), nullable=False)
     reference_number = Column(String(150))
     remarks = Column(Text)

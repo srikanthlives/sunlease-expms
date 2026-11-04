@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.db.session import Base, engine
 from app.models import __init__ as _models  # noqa: F401  (ensures models are registered)
 from app.migrate import migrate
+from app.fixups import run_fixups
 from app.routers import auth, masters, expenses, invoices, payments, claims, documents, dashboard, admin, edit_requests, recurring_expenses, bulk_import, receivables, funds
 
 # Additive auto-migration: creates any missing tables/columns without
@@ -22,6 +23,7 @@ try:
     print(f"[STARTUP] Database URL: {settings.DATABASE_URL}")
     print(f"[STARTUP] Upload Dir: {settings.UPLOAD_DIR}")
     migrate(verbose=True)
+    run_fixups(verbose=True)
     print(f"[STARTUP] Migration completed successfully")
 except Exception as e:
     print(f"[ERROR] Migration failed: {e}", file=sys.stderr)

@@ -10,6 +10,14 @@ const TABS = [
   { key: "entities", label: "Funding Entities" },
 ];
 const ACCOUNT_TYPES = ["BANK", "CASH", "UPI", "PETTY_CASH"];
+const FUNDING_TYPES = [
+  { value: "LOAN", label: "Loan (repayable)" },
+  { value: "CAPITAL", label: "Capital / equity" },
+  { value: "ADVANCE", label: "Advance" },
+  { value: "OTHER", label: "Other" },
+];
+const FUNDING_TYPE_LABEL = { LOAN: "Loan", CAPITAL: "Capital", ADVANCE: "Advance", OTHER: "Other" };
+const KIND_LABEL = { FUNDING: "Funding In", REPAYMENT: "Repayment Out", TRANSFER: "Transfer" };
 const today = () => new Date().toISOString().slice(0, 10);
 
 function Modal({ title, onClose, children }) {
@@ -46,6 +54,7 @@ function BalanceSheet() {
     { key: "transfers_in", label: "Transfers In", align: "right", render: (r) => money(r.transfers_in) },
     { key: "receipts", label: "Receipts", align: "right", render: (r) => money(r.receipts) },
     { key: "transfers_out", label: "Transfers Out", align: "right", render: (r) => money(r.transfers_out) },
+    { key: "repaid", label: "Repaid Out", align: "right", render: (r) => money(r.repaid) },
     { key: "payments", label: "Payments", align: "right", render: (r) => money(r.payments) },
     { key: "balance", label: "Balance", align: "right", render: (r) => <span className="tabular font-semibold">{formatMoney(r.balance)}</span> },
   ];
@@ -56,8 +65,8 @@ function BalanceSheet() {
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Funded" value={formatMoney(t.total_funded)} />
-        <StatCard label="Total Payments Out" value={formatMoney(t.payments)} />
-        <StatCard label="Receipts In" value={formatMoney(t.receipts)} />
+        <StatCard label="Repaid to Funders" value={formatMoney(t.total_repaid)} />
+        <StatCard label="Net Funding Outstanding" value={formatMoney(t.net_funded)} />
         <StatCard label="Net Balance (all accounts)" value={formatMoney(t.balance)} />
       </div>
       {data.groups.map((g) => (
@@ -67,13 +76,27 @@ function BalanceSheet() {
             <div className="text-sm text-ink/60">
               Funded: <span className="tabular font-semibold text-ink">{formatMoney(g.total_funded)}</span>
               <span className="mx-2">·</span>
+              Repaid: <span className="tabular font-semibold text-ink">{formatMoney(g.total_repaid)}</span>
+              <span className="mx-2">·</span>
+              Net outstanding: <span className="tabular font-semibold text-ink">{formatMoney(g.net_funded)}</span>
+              <span className="mx-2">·</span>
               Balance held: <span className="tabular font-semibold text-ink">{formatMoney(g.balance)}</span>
             </div>
           </div>
+          {g.by_funding_type?.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3 text-xs">
+              {g.by_funding_type.map((b) => (
+                <span key={b.funding_type} className="px-2 py-1 rounded bg-ink/5 text-ink/70">
+                  {FUNDING_TYPE_LABEL[b.funding_type] || b.funding_type} outstanding:{" "}
+                  <span className="tabular font-semibold text-ink">{formatMoney(b.net_funded)}</span>
+                </span>
+              ))}
+            </div>
+          )}
           <Table columns={cols} rows={g.accounts} compact empty="No accounts under this entity."
             footer={g.accounts.length > 1 ? {
               account_name: "Total",
-              ...Object.fromEntries(["opening_balance", "funded", "transfers_in", "receipts", "transfers_out", "payments", "balance"].map((k) => [k, money(g[k])])),
+              ...Object.fromEntries(["opening_balance", "funded", "transfers_in", "receipts", "transfers_out", "repaid", "payments", "balance"].map((k) => [k, money(g[k])])),
             } : undefined} />
         </Card>
       ))}
@@ -82,7 +105,7 @@ function BalanceSheet() {
 }
 
 function TransferForm({ accounts, entities, onSaved, onClose }) {
-  const [f, setF] = useState({ kind: "TRANSFER", transfer_date: today(), from_account_id: "", to_account_id: "", funding_entity_id: "", amount: "", reference_number: "", remarks: "" });
+  const [f, setF] = useState({ kind: "TRANSFER", transfer_date: today(), from_account_id: "", to_account_id: "", funding_entity_id: "", funding_type: "LOAN", amount: "", reference_number: "", remarks: "" });
   const [err, setErr] = useState("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -90,36 +113,48 @@ function TransferForm({ accounts, entities, onSaved, onClose }) {
     e.preventDefault();
     setErr("");
     try {
+      const entityKind = f.kind === "FUNDING" || f.kind === "REPAYMENT";
       await client.post("/funds/transfers", {
         kind: f.kind, transfer_date: f.transfer_date, amount: f.amount,
-        from_account_id: f.kind === "TRANSFER" ? Number(f.from_account_id) || null : null,
-        to_account_id: Number(f.to_account_id),
-        funding_entity_id: f.kind === "FUNDING" && f.funding_entity_id ? Number(f.funding_entity_id) : null,
+        from_account_id: f.kind === "FUNDING" ? null : Number(f.from_account_id) || null,
+        to_account_id: f.kind === "REPAYMENT" ? null : Number(f.to_account_id) || null,
+        funding_entity_id: entityKind && f.funding_entity_id ? Number(f.funding_entity_id) : null,
+        funding_type: entityKind ? f.funding_type : null,
         reference_number: f.reference_number || null, remarks: f.remarks || null,
       });
       onSaved();
     } catch (e2) { setErr(apiErrorMessage(e2)); }
   }
   const opts = (list) => list.filter((a) => a.is_active).map((a) => <option key={a.id} value={a.id}>{a.account_name}</option>);
+  const isEntityKind = f.kind === "FUNDING" || f.kind === "REPAYMENT";
   return (
     <form onSubmit={submit} className="space-y-4">
       <Select label="Type" value={f.kind} onChange={(e) => set("kind", e.target.value)}>
         <option value="TRANSFER">Transfer between accounts</option>
-        <option value="FUNDING">Funding received from entity</option>
+        <option value="FUNDING">Funding received from entity (money in)</option>
+        <option value="REPAYMENT">Repayment / return to entity (money out)</option>
       </Select>
-      {f.kind === "TRANSFER" ? (
-        <Select label="From Account" value={f.from_account_id} onChange={(e) => set("from_account_id", e.target.value)} required>
+      {isEntityKind && (
+        <>
+          <Select label="Funding Entity (defaults to account's entity)" value={f.funding_entity_id} onChange={(e) => set("funding_entity_id", e.target.value)}>
+            <option value="">Account's entity</option>
+            {entities.filter((x) => x.is_active).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </Select>
+          <Select label="Nature" value={f.funding_type} onChange={(e) => set("funding_type", e.target.value)}>
+            {FUNDING_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </Select>
+        </>
+      )}
+      {f.kind !== "FUNDING" && (
+        <Select label={f.kind === "REPAYMENT" ? "Paid From Account" : "From Account"} value={f.from_account_id} onChange={(e) => set("from_account_id", e.target.value)} required>
           <option value="">Select…</option>{opts(accounts)}
         </Select>
-      ) : (
-        <Select label="Funding Entity (defaults to account's entity)" value={f.funding_entity_id} onChange={(e) => set("funding_entity_id", e.target.value)}>
-          <option value="">Account's entity</option>
-          {entities.filter((x) => x.is_active).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      )}
+      {f.kind !== "REPAYMENT" && (
+        <Select label={f.kind === "FUNDING" ? "Received Into Account" : "To Account"} value={f.to_account_id} onChange={(e) => set("to_account_id", e.target.value)} required>
+          <option value="">Select…</option>{opts(accounts)}
         </Select>
       )}
-      <Select label="To Account" value={f.to_account_id} onChange={(e) => set("to_account_id", e.target.value)} required>
-        <option value="">Select…</option>{opts(accounts)}
-      </Select>
       <div className="grid grid-cols-2 gap-4">
         <Input label="Date" type="date" value={f.transfer_date} onChange={(e) => set("transfer_date", e.target.value)} required />
         <Input label="Amount" type="number" step="0.01" min="0" value={f.amount} onChange={(e) => set("amount", e.target.value)} required />
@@ -149,9 +184,13 @@ function Transfers({ accounts, entities }) {
   const cols = [
     { key: "transfer_number", label: "No." },
     { key: "transfer_date", label: "Date", render: (r) => formatDate(r.transfer_date) },
-    { key: "kind", label: "Type", render: (r) => (r.kind === "FUNDING" ? "Funding" : "Transfer") },
-    { key: "from_account_name", label: "From", render: (r) => r.kind === "FUNDING" ? (r.funding_entity_name || "—") : r.from_account_name },
-    { key: "to_account_name", label: "To" },
+    { key: "kind", label: "Type", render: (r) => (
+      <span>{KIND_LABEL[r.kind] || r.kind}
+        {r.funding_type && <span className="text-ink/50"> · {FUNDING_TYPE_LABEL[r.funding_type] || r.funding_type}</span>}
+      </span>
+    ) },
+    { key: "from_account_name", label: "From", render: (r) => r.kind === "FUNDING" ? (r.funding_entity_name || "—") : (r.from_account_name || "—") },
+    { key: "to_account_name", label: "To", render: (r) => r.kind === "REPAYMENT" ? (r.funding_entity_name || "—") : (r.to_account_name || "—") },
     { key: "amount", label: "Amount", align: "right", render: (r) => <span className={`tabular ${r.is_cancelled ? "line-through text-ink/40" : ""}`}>{formatMoney(r.amount)}</span> },
     { key: "reference_number", label: "Ref" },
     { key: "remarks", label: "Remarks", render: (r) => r.is_cancelled ? <span className="text-danger">Cancelled: {r.cancel_reason}</span> : r.remarks },

@@ -34,12 +34,17 @@ class FundAccountIn(BaseModel):
     is_active: bool = True
 
 
+FUNDING_TYPES = ("LOAN", "CAPITAL", "ADVANCE", "OTHER")
+
+
 class TransferIn(BaseModel):
-    kind: str  # FUNDING / TRANSFER
+    kind: str  # FUNDING / REPAYMENT / TRANSFER
     transfer_date: dt.date
     from_account_id: int | None = None
-    to_account_id: int
-    funding_entity_id: int | None = None  # FUNDING only; defaults to the account's entity
+    to_account_id: int | None = None
+    # FUNDING/REPAYMENT only; defaults to the involved account's own entity
+    funding_entity_id: int | None = None
+    funding_type: str | None = None  # LOAN / CAPITAL / ADVANCE / OTHER
     amount: Decimal
     reference_number: str | None = None
     remarks: str | None = None
@@ -70,8 +75,9 @@ def _transfer_out(t: FundTransfer):
         "kind": t.kind, "amount": float(t.amount),
         "from_account_id": t.from_account_id,
         "from_account_name": t.from_account.account_name if t.from_account else None,
-        "to_account_id": t.to_account_id, "to_account_name": t.to_account.account_name,
-        "funding_entity_id": t.funding_entity_id,
+        "to_account_id": t.to_account_id,
+        "to_account_name": t.to_account.account_name if t.to_account else None,
+        "funding_entity_id": t.funding_entity_id, "funding_type": t.funding_type,
         "funding_entity_name": t.funding_entity.name if t.funding_entity else None,
         "reference_number": t.reference_number, "remarks": t.remarks,
         "is_cancelled": t.is_cancelled, "cancel_reason": t.cancel_reason,
@@ -160,6 +166,7 @@ def update_account(account_id: int, p: FundAccountIn, db: Session = Depends(get_
 @router.get("/transfers")
 def list_transfers(
     account_id: int | None = None, funding_entity_id: int | None = None,
+    kind: str | None = None, funding_type: str | None = None,
     date_from: dt.date | None = None, date_to: dt.date | None = None,
     db: Session = Depends(get_db),
 ):
@@ -168,6 +175,10 @@ def list_transfers(
         q = q.filter((FundTransfer.from_account_id == account_id) | (FundTransfer.to_account_id == account_id))
     if funding_entity_id:
         q = q.filter(FundTransfer.funding_entity_id == funding_entity_id)
+    if kind:
+        q = q.filter(FundTransfer.kind == kind)
+    if funding_type:
+        q = q.filter(FundTransfer.funding_type == funding_type)
     if date_from:
         q = q.filter(FundTransfer.transfer_date >= date_from)
     if date_to:
@@ -186,34 +197,57 @@ def _next_number(db: Session) -> str:
 def create_transfer(p: TransferIn, db: Session = Depends(get_db), user: User = Depends(require_super_admin)):
     if p.amount <= 0:
         raise HTTPException(400, "Amount must be greater than zero")
-    if p.kind not in ("FUNDING", "TRANSFER"):
-        raise HTTPException(400, "kind must be FUNDING or TRANSFER")
-    to_acc = db.get(Account, p.to_account_id)
-    if not to_acc:
-        raise HTTPException(400, "Destination account not found")
+    if p.kind not in ("FUNDING", "REPAYMENT", "TRANSFER"):
+        raise HTTPException(400, "kind must be FUNDING, REPAYMENT or TRANSFER")
+    if p.funding_type and p.funding_type not in FUNDING_TYPES:
+        raise HTTPException(400, f"funding_type must be one of {', '.join(FUNDING_TYPES)}")
+
+    from_acc = db.get(Account, p.from_account_id) if p.from_account_id else None
+    to_acc = db.get(Account, p.to_account_id) if p.to_account_id else None
     entity_id = None
+    funding_type = None
+
     if p.kind == "TRANSFER":
-        if not p.from_account_id or not db.get(Account, p.from_account_id):
+        if not to_acc:
+            raise HTTPException(400, "Destination account not found")
+        if not p.from_account_id or not from_acc:
             raise HTTPException(400, "Source account is required for a transfer")
         if p.from_account_id == p.to_account_id:
             raise HTTPException(400, "Source and destination accounts must differ")
-    else:
+    elif p.kind == "FUNDING":
+        if not to_acc:
+            raise HTTPException(400, "Destination account not found")
         if p.from_account_id:
             raise HTTPException(400, "Funding has no source account")
         entity_id = p.funding_entity_id or to_acc.funding_entity_id
         if not entity_id:
             raise HTTPException(400, "Select the funding entity (this account has none assigned)")
         _validate_entity(db, entity_id)
+        funding_type = p.funding_type or "LOAN"
+    else:  # REPAYMENT - money going back out to a funding entity
+        if not from_acc:
+            raise HTTPException(400, "Source account is required for a repayment")
+        if p.to_account_id:
+            raise HTTPException(400, "A repayment has no destination account - it leaves the business")
+        entity_id = p.funding_entity_id or from_acc.funding_entity_id
+        if not entity_id:
+            raise HTTPException(400, "Select the funding entity being repaid (this account has none assigned)")
+        _validate_entity(db, entity_id)
+        funding_type = p.funding_type or "LOAN"
+
     t = FundTransfer(
         transfer_number=_next_number(db), transfer_date=p.transfer_date, kind=p.kind,
-        from_account_id=p.from_account_id if p.kind == "TRANSFER" else None,
-        to_account_id=p.to_account_id, funding_entity_id=entity_id, amount=p.amount,
+        from_account_id=p.from_account_id if p.kind in ("TRANSFER", "REPAYMENT") else None,
+        to_account_id=p.to_account_id if p.kind in ("TRANSFER", "FUNDING") else None,
+        funding_entity_id=entity_id, funding_type=funding_type, amount=p.amount,
         reference_number=p.reference_number, remarks=p.remarks, created_by=user.id,
     )
     db.add(t)
     db.flush()
     audit_service.record(db, "FUND_TRANSFER", t.id, "CREATE", user.id,
-                         {"kind": t.kind, "amount": p.amount, "from": t.from_account_id, "to": t.to_account_id})
+                         {"kind": t.kind, "funding_type": t.funding_type, "amount": p.amount,
+                          "from": t.from_account_id, "to": t.to_account_id,
+                          "entity": t.funding_entity_id})
     db.commit()
     db.refresh(t)
     return _transfer_out(t)
@@ -239,20 +273,24 @@ def cancel_transfer(transfer_id: int, p: CancelIn, db: Session = Depends(get_db)
 @router.get("/balance-sheet")
 def balance_sheet(as_of: dt.date | None = Query(None), db: Session = Depends(get_db)):
     """Per-account balance = opening + funding in + transfers in + receipts
-    - transfers out - payments, grouped under each funding entity."""
+    - transfers out - repayments out - payments, grouped under each funding
+    entity. Each entity group also reports total_funded / total_repaid and
+    net_funded (what the business still owes / holds from that entity)."""
     as_of = as_of or dt.date.today()
     accounts = db.query(Account).order_by(Account.account_name).all()
     rows = {a.id: {
         "id": a.id, "account_name": a.account_name, "account_type": a.account_type,
         "is_active": a.is_active, "funding_entity_id": a.funding_entity_id,
         "opening_balance": D(a.opening_balance or 0), "funded": D(0), "transfers_in": D(0),
-        "transfers_out": D(0), "receipts": D(0), "payments": D(0),
+        "transfers_out": D(0), "repaid": D(0), "receipts": D(0), "payments": D(0),
     } for a in accounts}
 
     for t in db.query(FundTransfer).filter(FundTransfer.is_cancelled.is_(False), FundTransfer.transfer_date <= as_of):
         amt = D(t.amount)
         if t.kind == "FUNDING":
             rows[t.to_account_id]["funded"] += amt
+        elif t.kind == "REPAYMENT":
+            rows[t.from_account_id]["repaid"] += amt
         else:
             rows[t.to_account_id]["transfers_in"] += amt
             rows[t.from_account_id]["transfers_out"] += amt
@@ -265,17 +303,34 @@ def balance_sheet(as_of: dt.date | None = Query(None), db: Session = Depends(get
 
     for r in rows.values():
         r["balance"] = (r["opening_balance"] + r["funded"] + r["transfers_in"] + r["receipts"]
-                        - r["transfers_out"] - r["payments"])
+                        - r["transfers_out"] - r["repaid"] - r["payments"])
 
     # Funding contributed per entity (the explicit entity on each FUNDING row,
     # which can differ from the receiving account's own entity).
     funded_by_entity: dict[int, Decimal] = {}
-    for eid, amt in db.query(FundTransfer.funding_entity_id, func.sum(FundTransfer.amount)).filter(
-            FundTransfer.kind == "FUNDING", FundTransfer.is_cancelled.is_(False),
-            FundTransfer.transfer_date <= as_of).group_by(FundTransfer.funding_entity_id):
-        funded_by_entity[eid] = D(amt)
+    repaid_by_entity: dict[int, Decimal] = {}
+    for kind, target in (("FUNDING", funded_by_entity), ("REPAYMENT", repaid_by_entity)):
+        for eid, amt in db.query(FundTransfer.funding_entity_id, func.sum(FundTransfer.amount)).filter(
+                FundTransfer.kind == kind, FundTransfer.is_cancelled.is_(False),
+                FundTransfer.transfer_date <= as_of).group_by(FundTransfer.funding_entity_id):
+            target[eid] = D(amt)
 
-    keys = ["opening_balance", "funded", "transfers_in", "transfers_out", "receipts", "payments", "balance"]
+    # Funding broken down by type (loan vs capital vs advance), per entity.
+    by_type: dict[tuple, Decimal] = {}
+    for eid, ftype, kind, amt in db.query(
+            FundTransfer.funding_entity_id, FundTransfer.funding_type, FundTransfer.kind,
+            func.sum(FundTransfer.amount)).filter(
+            FundTransfer.kind.in_(("FUNDING", "REPAYMENT")), FundTransfer.is_cancelled.is_(False),
+            FundTransfer.transfer_date <= as_of).group_by(
+            FundTransfer.funding_entity_id, FundTransfer.funding_type, FundTransfer.kind):
+        key = (eid, ftype or "OTHER")
+        by_type[key] = by_type.get(key, D(0)) + (D(amt) if kind == "FUNDING" else -D(amt))
+
+    def types_for(eid):
+        return [{"funding_type": t, "net_funded": float(v)}
+                for (e, t), v in sorted(by_type.items(), key=lambda kv: kv[0][1]) if e == eid]
+
+    keys = ["opening_balance", "funded", "transfers_in", "transfers_out", "repaid", "receipts", "payments", "balance"]
     def pack(r):
         return {k: (float(v) if isinstance(v, Decimal) else v) for k, v in r.items()}
 
@@ -283,16 +338,20 @@ def balance_sheet(as_of: dt.date | None = Query(None), db: Session = Depends(get
     entities = db.query(FundingEntity).order_by(FundingEntity.name).all()
     for e in entities:
         accs = [r for r in rows.values() if r["funding_entity_id"] == e.id]
+        funded, repaid = funded_by_entity.get(e.id, D(0)), repaid_by_entity.get(e.id, D(0))
         g = {"entity_id": e.id, "entity_name": e.name,
-             "total_funded": float(funded_by_entity.get(e.id, 0)),
+             "total_funded": float(funded), "total_repaid": float(repaid),
+             "net_funded": float(funded - repaid), "by_funding_type": types_for(e.id),
              "accounts": [pack(r) for r in accs]}
         for k in keys:
             g[k] = float(sum((r[k] for r in accs), D(0)))
         groups.append(g)
     unassigned = [r for r in rows.values() if r["funding_entity_id"] is None]
-    if unassigned or None in funded_by_entity:
+    if unassigned or None in funded_by_entity or None in repaid_by_entity:
+        funded, repaid = funded_by_entity.get(None, D(0)), repaid_by_entity.get(None, D(0))
         g = {"entity_id": None, "entity_name": "Unassigned",
-             "total_funded": float(funded_by_entity.get(None, 0)),
+             "total_funded": float(funded), "total_repaid": float(repaid),
+             "net_funded": float(funded - repaid), "by_funding_type": types_for(None),
              "accounts": [pack(r) for r in unassigned]}
         for k in keys:
             g[k] = float(sum((r[k] for r in unassigned), D(0)))
@@ -300,4 +359,6 @@ def balance_sheet(as_of: dt.date | None = Query(None), db: Session = Depends(get
 
     totals = {k: float(sum((r[k] for r in rows.values()), D(0))) for k in keys}
     totals["total_funded"] = float(sum(funded_by_entity.values(), D(0)))
+    totals["total_repaid"] = float(sum(repaid_by_entity.values(), D(0)))
+    totals["net_funded"] = totals["total_funded"] - totals["total_repaid"]
     return {"as_of": as_of, "groups": groups, "totals": totals}

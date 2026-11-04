@@ -412,3 +412,61 @@ Tested: company-wide vs two isolated projects' activity on the same day
 (1000/400 paid vs 500/500 paid) - each project's dashboard correctly shows
 only its own numbers, confirmed against the live API before touching the
 frontend.
+
+## Funds: repayments to funding entities + loan/capital split (done)
+`FundTransfer.kind` gained a third value, **`REPAYMENT`** - the mirror image
+of `FUNDING`: money going back OUT of one of our accounts to a funding
+entity (repaying a director's loan, returning capital, settling an
+advance). `from_account_id` required, `to_account_id` null,
+`funding_entity_id` required (defaults to the source account's own entity).
+`FUNDING` is unchanged (to_account only), `TRANSFER` unchanged (both ends
+are our own accounts).
+
+New `FundTransfer.funding_type` column classifies FUNDING/REPAYMENT rows as
+`LOAN` / `CAPITAL` / `ADVANCE` / `OTHER` (defaults to `LOAN` when omitted;
+always null on TRANSFER rows) - this is what distinguishes a director's
+*loan* from equity introduced. Validated server-side against the
+`FUNDING_TYPES` tuple in `routers/funds.py`.
+
+Balance sheet (`GET /funds/balance-sheet`):
+- per-account `repaid` figure, and `balance` now subtracts it
+  (`opening + funded + transfers_in + receipts − transfers_out − repaid − payments`)
+- per-entity `total_repaid` and `net_funded` (= funded − repaid, i.e. what
+  the business still owes/holds from that entity), plus `by_funding_type`:
+  net outstanding broken down by LOAN/CAPITAL/ADVANCE
+- same three keys on the grand `totals`
+`GET /funds/transfers` gained `kind` and `funding_type` filters.
+
+Frontend `pages/Funds.jsx`: the transfer form's Type dropdown has the third
+option and swaps which account field it asks for per kind (plus a "Nature"
+dropdown for FUNDING/REPAYMENT); the transfers table shows
+`Kind · Nature` and renders the entity name in the To column for
+repayments; the balance sheet has a "Repaid Out" column, a "Repaid to
+Funders" / "Net Funding Outstanding" stat pair, and per-entity
+loan-vs-capital chips.
+
+**Schema note - `app/fixups.py` (new)**: this needed
+`fund_transfers.to_account_id` to become nullable, which `migrate.py`
+deliberately won't do (additive-only; SQLite can't ALTER nullability).
+`fixups.py` holds hand-written, idempotent, one-transaction-each schema
+rebuilds for exactly this class of change, runs from `main.py` right after
+`migrate()`, and is runnable standalone with `python -m app.fixups`. The
+one fixup in it renames `fund_transfers` aside, drops the indexes that
+SQLite carries across the rename (they keep their names and would
+collide), recreates the table from the model, copies every row back, and
+drops the old table. Put future non-additive changes here rather than
+reaching for a DB reset.
+Tested against the live API: funding in (loan + capital), partial
+repayment out, every 400 guard rail (repayment with a to_account, without
+a from_account, funding with a from_account, bad funding_type, bad kind,
+zero amount, same-account transfer), entity totals/net/by-type arithmetic,
+account balance net of the repayment, cancelled repayment excluded from
+all totals, both new list filters, and non-Super-Admin (admin/accounts/
+manager) blocked from the whole module. Fixup verified separately on a
+copy of the live DB with a pre-existing row: rebuilt correctly, row and
+unique index intact, second run a no-op.
+
+**Note on the DB path**: the live dev database is `data/expms.db` (see
+`EXPMS_DATABASE_URL` default in `core/config.py`), *not*
+`backend/expms.db` - that file exists but is empty and stale. Earlier
+notes in this file saying `rm -f expms.db` mean the one under `data/`.
