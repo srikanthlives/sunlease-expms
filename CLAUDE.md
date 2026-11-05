@@ -470,3 +470,119 @@ unique index intact, second run a no-op.
 `EXPMS_DATABASE_URL` default in `core/config.py`), *not*
 `backend/expms.db` - that file exists but is empty and stale. Earlier
 notes in this file saying `rm -f expms.db` mean the one under `data/`.
+
+## Funds: Super Admin verification lock on transfers (done)
+A fund transfer can be **verified** by Super Admin, which locks it. Follows
+the existing `is_verified` / `verified_by` / `verified_at` +
+verify/unverify-endpoint convention already used by Expense, Payment,
+Invoice and RecurringExpense - but with a *stricter* role rule, because
+here the point is to lock Admin out, not Accounts:
+
+- `POST /funds/transfers/{id}/verify` - **`require_super_admin`** (note:
+  the rest of the module is `require_admin`; these two endpoints are the
+  only Super-Admin-only ones). 400 on an already-verified or cancelled row.
+- `POST /funds/transfers/{id}/unverify` - Super Admin, body `{reason}`
+  (required). Clears the verifier and re-opens the row to Admin.
+- Once verified, `_guard_verified()` gates both `PUT /funds/transfers/{id}`
+  and `POST .../cancel`: non-Super-Admin gets **403**, Super Admin without
+  a reason gets **400**. Cancel is gated on the same terms deliberately -
+  otherwise Admin could bypass the lock with cancel-and-re-enter.
+- `TransferIn.edit_reason` carries the reason on edit; it is stored on the
+  row as `last_edit_reason` (new column, latest only) and written into the
+  audit entry as `{"verified_at_edit": true, "edit_reason": "..."}`
+  alongside the usual before/after - the audit log is the full history,
+  the column is just for display.
+- Editing a verified row keeps it verified (it does not silently reset to
+  unverified). Verification state has no effect on any money figure.
+- New columns on `fund_transfers`: `is_verified`, `verified_by`,
+  `verified_at`, `last_edit_reason` - all additive, so `migrate.py` picked
+  them up on restart (confirmed against the live DB).
+- `GET /funds/transfers` gained a `verified=true|false` filter.
+
+Frontend (`pages/Funds.jsx`): a Verified column showing the verifier's name
+(tooltip carries verified-by/at and the last edit reason), a shield
+Verify/Un-verify button shown only to Super Admin, Edit/Cancel buttons
+hidden on a verified row for anyone who isn't Super Admin (`canModify`),
+and an amber "this entry is verified - a reason is required" panel with a
+mandatory reason textarea inside the edit form. Frontend gating is UX only;
+the server is the boundary.
+
+Tested against the live API (22 assertions): new rows start unverified;
+admin/accounts/manager/superaccounts all 403 on verify; unverified rows
+stay freely editable by Admin with no reason; Super Admin verify records
+the verifier; double-verify 400; verified row blocks Admin edit (even
+*with* a reason supplied) and Admin cancel; Super Admin edit without a
+reason 400 and with a whitespace-only reason 400, with the row provably
+unchanged after both; Super Admin edit with a reason applies, stays
+verified and stores the reason; Super Admin cancel of a verified row with
+a reason; cancelled row can't be verified; unverify clears the verifier
+and restores Admin's plain edit; double-unverify and reason-less unverify
+400; Admin can't unverify; the `verified` filter partitions the list; and
+the balance sheet is unaffected by verification. Audit rows for VERIFY /
+UNVERIFY / CANCEL / UPDATE all confirmed in the DB, including the reason
+on the verified edit.
+
+## Funds: now Admin + Super Admin (done)
+The Funds module was initially Super Admin only. It is now **Admin and
+Super Admin**, which is just `require_admin` - the single module-level
+router dependency in `routers/funds.py` plus the per-endpoint `Depends`
+were swapped from `require_super_admin`, so there is no separate
+read-vs-write split: Admin gets the whole module (entities, fund
+accounts, transfers/funding/repayments, edit, cancel, balance sheet),
+identically to Super Admin.
+
+Frontend gating moved in step: the "Funds" nav section in
+`MainLayout.jsx` and the `/funds` route guard in `App.jsx` are both
+`["ADMIN", "SUPER_ADMIN"]` now - same role set as Masters.
+
+ACCOUNTS, SUPER_ACCOUNTS, MANAGER, EMPLOYEE and VIEWER still have **no**
+access to any funds endpoint (403). Worth noting the deliberate asymmetry:
+Accounts does all the transactional work but fund tracking is a
+management view, so Accounts is excluded here even though it can see the
+financial dashboard. Tested with a real Admin login across every
+endpoint - full write cycle (create/edit entity, create/edit account,
+funding in, repayment out, transfer, edit transfer, cancel transfer),
+validation guard rails still enforced for Admin, cancelled-row edit still
+400, Admin's balance sheet byte-identical to Super Admin's, and
+accounts/manager/superaccounts confirmed 403 on all four GETs plus the
+create endpoint.
+
+## Funds: edit an existing transfer / funding entry (done)
+`PUT /funds/transfers/{id}` (Super Admin, like the rest of the module) -
+full-payload replace reusing the same `TransferIn` body as create.
+
+- Validation is shared, not duplicated: `_resolve_transfer(db, payload)`
+  does every check and resolves `(funding_entity_id, funding_type)`;
+  `_apply_transfer(row, payload, ...)` writes the result onto the row,
+  nulling whichever account side the kind doesn't use. Both create and
+  update call the pair, so the two paths can't drift apart in what they
+  accept (same reasoning as `edit_request_service.apply_changes`).
+- **The kind is editable**, including switching between all three. Flipping
+  FUNDING -> REPAYMENT moves the account from `to_` to `from_`; switching
+  to TRANSFER clears `funding_entity_id`/`funding_type` outright. The
+  balance sheet just recomputes from the rows, so no cached figure needs
+  invalidating.
+- `transfer_number` is immutable (never taken from the payload).
+- A **cancelled** transfer cannot be edited (400) - it's history; record a
+  fresh entry instead.
+- Every edit writes an `AuditLog` UPDATE row holding
+  `{"before": {...}, "after": {...}}` snapshots of all the business fields.
+
+Frontend: `TransferForm` in `pages/Funds.jsx` took an optional `existing`
+prop - same form for both modes, prefilled from the row and submitting
+PUT instead of POST. A pencil Edit button sits next to the existing
+Cancel button on each non-cancelled row.
+
+Tested against the live API: field edits with the number unchanged,
+funding-entity reassignment, both kind switches (with the account sides
+and funding fields correctly rewritten), all seven create-side guard
+rails rejected identically on edit, the row provably untouched after a
+rejected edit, unknown id 404, cancelled row 400, balance-sheet totals
+following a kind flip (net_funded going to -80000), audit before/after
+rows present in the DB, and admin/accounts/manager all 403.
+
+**Test-hygiene note**: the funds tests create entities/accounts/transfers
+in the live `data/expms.db`. Delete those rows by explicit id afterwards -
+do not bulk `delete from fund_transfers`, and never delete from
+`audit_logs` (append-only by design; a few test FUND_TRANSFER entries
+there are harmless).

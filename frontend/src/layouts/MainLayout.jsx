@@ -66,7 +66,7 @@ const NAV = [
   },
   {
     section: "Funds",
-    roles: ["SUPER_ADMIN"],
+    roles: ["ADMIN", "SUPER_ADMIN"],
     items: [{ to: "/funds", label: "Funds & Transfers", icon: Landmark }],
   },
   {

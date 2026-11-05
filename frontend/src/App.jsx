@@ -78,7 +78,7 @@ export default function App() {
             <Route path="edit-requests" element={<EditRequests />} />
             <Route path="recurring-expenses" element={<RecurringExpenses />} />
             <Route path="recurring-expenses/approvals" element={<RecurringExpenseApprovals />} />
-            <Route path="funds" element={<RequireRole roles={["SUPER_ADMIN"]}><Funds /></RequireRole>} />
+            <Route path="funds" element={<RequireRole roles={["ADMIN", "SUPER_ADMIN"]}><Funds /></RequireRole>} />
             <Route path="bulk-import" element={<BulkImport />} />
           </Route>
         </Routes>

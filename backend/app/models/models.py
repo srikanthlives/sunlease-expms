@@ -289,12 +289,20 @@ class FundTransfer(Base):
     remarks = Column(Text)
     is_cancelled = Column(Boolean, default=False)
     cancel_reason = Column(Text)
+    # Verification (Super Admin only). Once verified, the row is locked:
+    # Admin can no longer edit or cancel it, and Super Admin may only do so
+    # by supplying a reason, which is kept here and in the audit log.
+    is_verified = Column(Boolean, default=False, nullable=False, server_default="0")
+    verified_by = Column(Integer, ForeignKey("users.id"))
+    verified_at = Column(DateTime)
+    last_edit_reason = Column(Text)
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=now)
 
     from_account = relationship("Account", foreign_keys=[from_account_id])
     to_account = relationship("Account", foreign_keys=[to_account_id])
     funding_entity = relationship("FundingEntity", foreign_keys=[funding_entity_id])
+    verifier = relationship("User", foreign_keys=[verified_by])
 
 
 # ---------------------------------------------------------------------------

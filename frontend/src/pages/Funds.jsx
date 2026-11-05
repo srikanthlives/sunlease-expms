@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { Card, Table, StatCard, Button, Input, Textarea, Select, formatMoney, formatDate } from "../components/ui";
-import { Plus, X, Pencil, Ban } from "lucide-react";
+import { Plus, X, Pencil, Ban, ShieldCheck, ShieldOff } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
 
 const TABS = [
   { key: "sheet", label: "Balance Sheet" },
@@ -104,8 +105,14 @@ function BalanceSheet() {
   );
 }
 
-function TransferForm({ accounts, entities, onSaved, onClose }) {
-  const [f, setF] = useState({ kind: "TRANSFER", transfer_date: today(), from_account_id: "", to_account_id: "", funding_entity_id: "", funding_type: "LOAN", amount: "", reference_number: "", remarks: "" });
+function TransferForm({ accounts, entities, existing, onSaved, onClose }) {
+  const [f, setF] = useState(existing ? {
+    kind: existing.kind, transfer_date: existing.transfer_date,
+    from_account_id: existing.from_account_id ?? "", to_account_id: existing.to_account_id ?? "",
+    funding_entity_id: existing.funding_entity_id ?? "", funding_type: existing.funding_type || "LOAN",
+    amount: existing.amount, reference_number: existing.reference_number || "",
+    remarks: existing.remarks || "", edit_reason: "",
+  } : { kind: "TRANSFER", transfer_date: today(), from_account_id: "", to_account_id: "", funding_entity_id: "", funding_type: "LOAN", amount: "", reference_number: "", remarks: "" });
   const [err, setErr] = useState("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -114,14 +121,17 @@ function TransferForm({ accounts, entities, onSaved, onClose }) {
     setErr("");
     try {
       const entityKind = f.kind === "FUNDING" || f.kind === "REPAYMENT";
-      await client.post("/funds/transfers", {
+      const body = {
         kind: f.kind, transfer_date: f.transfer_date, amount: f.amount,
         from_account_id: f.kind === "FUNDING" ? null : Number(f.from_account_id) || null,
         to_account_id: f.kind === "REPAYMENT" ? null : Number(f.to_account_id) || null,
         funding_entity_id: entityKind && f.funding_entity_id ? Number(f.funding_entity_id) : null,
         funding_type: entityKind ? f.funding_type : null,
         reference_number: f.reference_number || null, remarks: f.remarks || null,
-      });
+        edit_reason: existing?.is_verified ? f.edit_reason : null,
+      };
+      if (existing) await client.put(`/funds/transfers/${existing.id}`, body);
+      else await client.post("/funds/transfers", body);
       onSaved();
     } catch (e2) { setErr(apiErrorMessage(e2)); }
   }
@@ -161,6 +171,16 @@ function TransferForm({ accounts, entities, onSaved, onClose }) {
       </div>
       <Input label="Reference No." value={f.reference_number} onChange={(e) => set("reference_number", e.target.value)} />
       <Textarea label="Remarks" value={f.remarks} onChange={(e) => set("remarks", e.target.value)} />
+      {existing?.is_verified && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 space-y-2">
+          <p className="text-xs text-amber-900">
+            This entry is verified{existing.verified_by_name ? ` by ${existing.verified_by_name}` : ""}.
+            Editing it is recorded against your name — a reason is required.
+          </p>
+          <Textarea label="Reason for this edit" value={f.edit_reason}
+            onChange={(e) => set("edit_reason", e.target.value)} required />
+        </div>
+      )}
       {err && <div className="text-sm text-danger">{err}</div>}
       <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit">Save</Button></div>
     </form>
@@ -168,8 +188,11 @@ function TransferForm({ accounts, entities, onSaved, onClose }) {
 }
 
 function Transfers({ accounts, entities }) {
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
   const [rows, setRows] = useState([]);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [error, setError] = useState("");
   const load = useCallback(() => {
     client.get("/funds/transfers").then((r) => setRows(r.data)).catch((e) => setError(apiErrorMessage(e)));
@@ -177,10 +200,26 @@ function Transfers({ accounts, entities }) {
   useEffect(load, [load]);
 
   async function cancel(t) {
-    const reason = window.prompt(`Cancel ${t.transfer_number}? Enter a reason:`);
+    const prompt_ = t.is_verified
+      ? `${t.transfer_number} is verified. Enter a reason to cancel it:`
+      : `Cancel ${t.transfer_number}? Enter a reason:`;
+    const reason = window.prompt(prompt_);
     if (!reason) return;
     try { await client.post(`/funds/transfers/${t.id}/cancel`, { reason }); load(); } catch (e) { setError(apiErrorMessage(e)); }
   }
+  async function verify(t) {
+    setError("");
+    try { await client.post(`/funds/transfers/${t.id}/verify`); load(); } catch (e) { setError(apiErrorMessage(e)); }
+  }
+  async function unverify(t) {
+    const reason = window.prompt(`Un-verify ${t.transfer_number}? Enter a reason:`);
+    if (!reason) return;
+    try { await client.post(`/funds/transfers/${t.id}/unverify`, { reason }); load(); } catch (e) { setError(apiErrorMessage(e)); }
+  }
+  // A verified row is locked server-side: only a Super Admin can edit or
+  // cancel it, and only with a reason. Mirror that in the UI rather than
+  // showing buttons that 403.
+  const canModify = (r) => !r.is_verified || isSuperAdmin;
   const cols = [
     { key: "transfer_number", label: "No." },
     { key: "transfer_date", label: "Date", render: (r) => formatDate(r.transfer_date) },
@@ -194,7 +233,25 @@ function Transfers({ accounts, entities }) {
     { key: "amount", label: "Amount", align: "right", render: (r) => <span className={`tabular ${r.is_cancelled ? "line-through text-ink/40" : ""}`}>{formatMoney(r.amount)}</span> },
     { key: "reference_number", label: "Ref" },
     { key: "remarks", label: "Remarks", render: (r) => r.is_cancelled ? <span className="text-danger">Cancelled: {r.cancel_reason}</span> : r.remarks },
-    { key: "_a", label: "", render: (r) => !r.is_cancelled && <button title="Cancel" onClick={() => cancel(r)} className="text-ink/40 hover:text-danger"><Ban size={15} /></button> },
+    { key: "is_verified", label: "Verified", render: (r) => r.is_verified ? (
+      <span className="inline-flex items-center gap-1 text-emerald-700 text-xs"
+        title={`Verified${r.verified_by_name ? ` by ${r.verified_by_name}` : ""}${r.verified_at ? ` on ${formatDate(r.verified_at)}` : ""}${r.last_edit_reason ? ` · last edited: ${r.last_edit_reason}` : ""}`}>
+        <ShieldCheck size={14} />{r.verified_by_name || "Yes"}
+      </span>
+    ) : <span className="text-ink/40 text-xs">—</span> },
+    { key: "_a", label: "", render: (r) => !r.is_cancelled && (
+      <div className="flex items-center gap-2 justify-end">
+        {isSuperAdmin && (r.is_verified ? (
+          <button title="Un-verify" onClick={() => unverify(r)} className="text-emerald-700 hover:text-ink"><ShieldOff size={15} /></button>
+        ) : (
+          <button title="Verify" onClick={() => verify(r)} className="text-ink/40 hover:text-emerald-700"><ShieldCheck size={15} /></button>
+        ))}
+        {canModify(r) && <>
+          <button title={r.is_verified ? "Edit (reason required)" : "Edit"} onClick={() => { setError(""); setEditing(r); }} className="text-ink/40 hover:text-ink"><Pencil size={15} /></button>
+          <button title="Cancel" onClick={() => cancel(r)} className="text-ink/40 hover:text-danger"><Ban size={15} /></button>
+        </>}
+      </div>
+    ) },
   ];
   return (
     <div className="space-y-4">
@@ -204,6 +261,12 @@ function Transfers({ accounts, entities }) {
       {adding && (
         <Modal title="New Transfer / Funding" onClose={() => setAdding(false)}>
           <TransferForm accounts={accounts} entities={entities} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); }} />
+        </Modal>
+      )}
+      {editing && (
+        <Modal title={`Edit ${editing.transfer_number}`} onClose={() => setEditing(null)}>
+          <TransferForm accounts={accounts} entities={entities} existing={editing}
+            onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
         </Modal>
       )}
     </div>
