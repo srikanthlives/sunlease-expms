@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import { useMemo, useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Copy, Check } from "lucide-react";
 
 export function Card({ children, className = "", ...props }) {
   return <div className={`ledger-card p-5 ${className}`} {...props}>{children}</div>;
@@ -186,9 +187,112 @@ export function formatDateTime(value) {
   return `${formatDate(d)}, ${hours}:${minutes}`;
 }
 
+/** One-line cell for free text (remarks, descriptions, notes) that can be
+ * arbitrarily long. Clamps to `width` with a CSS ellipsis so the row stays
+ * a single line, and - only when the text actually overflows - opens a
+ * floating card on hover with the full text, selectable and with a Copy
+ * button.
+ *
+ * The card is rendered in a portal with fixed positioning rather than
+ * absolutely inside the cell, because tables live in an `overflow-x-auto`
+ * wrapper that would otherwise clip it. It stays open while the pointer is
+ * over either the cell or the card itself (short close delay), so the text
+ * can actually be selected rather than vanishing on the way there. */
+export function TruncatedText({ text, width = 220, className = "", empty = "—" }) {
+  const anchorRef = useRef(null);
+  const cardRef = useRef(null);
+  const closeTimer = useRef(null);
+  const [pos, setPos] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
+
+  // The card is positioned from a bounding rect captured on hover, so any
+  // scroll (page or the table's own horizontal scroller) would leave it
+  // floating away from its cell - close it instead of letting it drift.
+  useEffect(() => {
+    if (!pos) return;
+    const close = () => { clearTimeout(closeTimer.current); setPos(null); setCopied(false); };
+    // ...but not when the scroll is the card's own overflowing text being
+    // scrolled, which is exactly what a long value needs.
+    const onScroll = (e) => { if (!cardRef.current?.contains(e.target)) close(); };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pos]);
+
+  const value = text == null ? "" : String(text);
+  if (!value) return <span className="text-ink/30">{empty}</span>;
+
+  function open() {
+    clearTimeout(closeTimer.current);
+    const el = anchorRef.current;
+    if (!el) return;
+    // Nothing hidden - no reason to pop anything up.
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    const r = el.getBoundingClientRect();
+    const CARD = 360;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - CARD - 8));
+    const below = window.innerHeight - r.bottom > 180;
+    setPos({ left, top: below ? r.bottom + 6 : undefined, bottom: below ? undefined : window.innerHeight - r.top + 6 });
+  }
+  function scheduleClose() {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => { setPos(null); setCopied(false); }, 150);
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked - the text is selectable as a fallback */ }
+  }
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        onMouseEnter={open}
+        onMouseLeave={scheduleClose}
+        className={`block truncate align-middle ${className}`}
+        style={{ maxWidth: width }}
+      >
+        {value}
+      </span>
+      {pos && createPortal(
+        <div
+          ref={cardRef}
+          onMouseEnter={() => clearTimeout(closeTimer.current)}
+          onMouseLeave={scheduleClose}
+          className="fixed z-50 w-[360px] rounded-md border border-ink/15 bg-white p-3 shadow-xl"
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom }}
+        >
+          <p className="max-h-60 overflow-y-auto whitespace-pre-wrap break-words select-text text-sm text-ink">
+            {value}
+          </p>
+          <div className="mt-2 flex justify-end border-t border-ink/10 pt-2">
+            <button type="button" onClick={copy}
+              className="inline-flex items-center gap-1 text-xs text-ink/50 hover:text-ink">
+              {copied ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 export function Table({
   columns, rows, keyField = "id", onRowClick, onRowDoubleClick, empty = "No records found.",
   spacious = false, compact = false, footer, stickyHeader = false, maxHeight,
+  // Forces every cell onto a single line (no wrapping), so each row is
+  // exactly one line tall. Pair it with <TruncatedText> on any free-text
+  // column, otherwise long values just widen the table.
+  oneLine = false,
   // Controlled/server-driven sort: pass `sort` ({key, dir}) + `onSortChange`
   // when the caller is fetching already-sorted rows (e.g. sorting the full
   // filtered set across pages via an API param) - clicking a header then
@@ -291,7 +395,7 @@ export function Table({
               onDoubleClick={() => onRowDoubleClick && onRowDoubleClick(row)}
             >
               {columns.map((c) => (
-                <td key={c.key} style={stickyStyle(c)} className={`${cellPad} align-middle ${c.stickyLeft ? "bg-white" : ""} ${c.align === "right" ? "text-right" : ""}`}>
+                <td key={c.key} style={stickyStyle(c)} className={`${cellPad} align-middle ${oneLine ? "whitespace-nowrap" : ""} ${c.stickyLeft ? "bg-white" : ""} ${c.align === "right" ? "text-right" : ""}`}>
                   {c.render ? c.render(row) : row[c.key]}
                 </td>
               ))}

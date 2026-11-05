@@ -471,6 +471,43 @@ unique index intact, second run a no-op.
 `backend/expms.db` - that file exists but is empty and stale. Earlier
 notes in this file saying `rm -f expms.db` mean the one under `data/`.
 
+## Shared `TruncatedText` cell + one-line table rows (done)
+`components/ui.jsx` gained **`TruncatedText`** - a reusable one-line cell
+for arbitrarily long free text (remarks, notes, references). It clamps to
+a `width` prop with a CSS ellipsis, and **only when the text actually
+overflows** (`scrollWidth > clientWidth`) opens a floating card on hover
+with the full value: `whitespace-pre-wrap`, `select-text` so it can be
+selected, scrollable past ~15 lines, and a Copy button
+(`navigator.clipboard`, with the selectable text as the fallback when the
+clipboard is blocked).
+
+Implementation details that matter (the usual browser-only traps):
+- The card is rendered through `createPortal` into `document.body` with
+  `position: fixed`, **not** absolutely inside the cell - every table in
+  this app sits in an `overflow-x-auto` wrapper that would clip it.
+- It stays open while the pointer is over either the cell or the card
+  (150ms close delay), so the text can actually be reached and selected
+  instead of vanishing on the way there.
+- Position is clamped horizontally to the viewport and flips above the
+  cell when there is under 180px of room below.
+- Any scroll or resize closes it, since the position was captured from a
+  one-off `getBoundingClientRect` - **except** a scroll originating inside
+  the card itself (checked with `cardRef.current.contains(e.target)`),
+  which is exactly what reading a long value needs. Caught while
+  reviewing, not after the fact.
+
+`Table` gained an **`oneLine`** prop that applies `whitespace-nowrap` to
+every cell, so each row is exactly one line tall. Default is `false`, so
+no existing table changed. Pair it with `TruncatedText` on the free-text
+columns - `oneLine` alone would just let long values widen the table.
+
+Applied in `pages/Funds.jsx`: the Transfers & Funding table is `oneLine`
+with `TruncatedText` on From / To / Ref / Remarks (including the
+"Cancelled: <reason>" variant, which keeps its danger styling), and the
+Funding Entities table is `oneLine` with it on Notes. Verified with
+`npm run build` and `npm run lint` (21 pre-existing warnings, none in the
+touched files, zero errors). No backend change.
+
 ## Funds: Super Admin verification lock on transfers (done)
 A fund transfer can be **verified** by Super Admin, which locks it. Follows
 the existing `is_verified` / `verified_by` / `verified_at` +

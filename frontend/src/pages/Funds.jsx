@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import client, { apiErrorMessage } from "../api/client";
-import { Card, Table, StatCard, Button, Input, Textarea, Select, formatMoney, formatDate } from "../components/ui";
+import { Card, Table, StatCard, Button, Input, Textarea, Select, TruncatedText, formatMoney, formatDate } from "../components/ui";
 import { Plus, X, Pencil, Ban, ShieldCheck, ShieldOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -228,11 +228,13 @@ function Transfers({ accounts, entities }) {
         {r.funding_type && <span className="text-ink/50"> · {FUNDING_TYPE_LABEL[r.funding_type] || r.funding_type}</span>}
       </span>
     ) },
-    { key: "from_account_name", label: "From", render: (r) => r.kind === "FUNDING" ? (r.funding_entity_name || "—") : (r.from_account_name || "—") },
-    { key: "to_account_name", label: "To", render: (r) => r.kind === "REPAYMENT" ? (r.funding_entity_name || "—") : (r.to_account_name || "—") },
+    { key: "from_account_name", label: "From", render: (r) => <TruncatedText width={160} text={r.kind === "FUNDING" ? r.funding_entity_name : r.from_account_name} /> },
+    { key: "to_account_name", label: "To", render: (r) => <TruncatedText width={160} text={r.kind === "REPAYMENT" ? r.funding_entity_name : r.to_account_name} /> },
     { key: "amount", label: "Amount", align: "right", render: (r) => <span className={`tabular ${r.is_cancelled ? "line-through text-ink/40" : ""}`}>{formatMoney(r.amount)}</span> },
-    { key: "reference_number", label: "Ref" },
-    { key: "remarks", label: "Remarks", render: (r) => r.is_cancelled ? <span className="text-danger">Cancelled: {r.cancel_reason}</span> : r.remarks },
+    { key: "reference_number", label: "Ref", render: (r) => <TruncatedText text={r.reference_number} width={110} /> },
+    { key: "remarks", label: "Remarks", render: (r) => r.is_cancelled
+      ? <TruncatedText text={`Cancelled: ${r.cancel_reason}`} width={240} className="text-danger" />
+      : <TruncatedText text={r.remarks} width={240} /> },
     { key: "is_verified", label: "Verified", render: (r) => r.is_verified ? (
       <span className="inline-flex items-center gap-1 text-emerald-700 text-xs"
         title={`Verified${r.verified_by_name ? ` by ${r.verified_by_name}` : ""}${r.verified_at ? ` on ${formatDate(r.verified_at)}` : ""}${r.last_edit_reason ? ` · last edited: ${r.last_edit_reason}` : ""}`}>
@@ -257,7 +259,7 @@ function Transfers({ accounts, entities }) {
     <div className="space-y-4">
       <div className="flex justify-end"><Button onClick={() => setAdding(true)}><Plus size={15} className="mr-1 inline" />New Transfer / Funding</Button></div>
       {error && <div className="text-sm text-danger">{error}</div>}
-      <Card><Table columns={cols} rows={rows} compact empty="No transfers yet." /></Card>
+      <Card><Table columns={cols} rows={rows} compact oneLine empty="No transfers yet." /></Card>
       {adding && (
         <Modal title="New Transfer / Funding" onClose={() => setAdding(false)}>
           <TransferForm accounts={accounts} entities={entities} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); }} />
@@ -357,14 +359,14 @@ function Entities({ entities, reload }) {
   const cols = [
     { key: "name", label: "Entity" },
     { key: "account_count", label: "Accounts" },
-    { key: "notes", label: "Notes" },
+    { key: "notes", label: "Notes", render: (r) => <TruncatedText text={r.notes} width={320} /> },
     { key: "is_active", label: "Status", render: (r) => (r.is_active ? "Active" : "Inactive") },
     { key: "_a", label: "", render: (r) => <button onClick={() => open(r)} className="text-ink/40 hover:text-ink"><Pencil size={15} /></button> },
   ];
   return (
     <div className="space-y-4">
       <div className="flex justify-end"><Button onClick={() => open(null)}><Plus size={15} className="mr-1 inline" />New Funding Entity</Button></div>
-      <Card><Table columns={cols} rows={entities} compact empty="No funding entities yet." /></Card>
+      <Card><Table columns={cols} rows={entities} compact oneLine empty="No funding entities yet." /></Card>
       {editing && (
         <Modal title={editing.id ? "Edit Funding Entity" : "New Funding Entity"} onClose={() => setEditing(null)}>
           <form onSubmit={submit} className="space-y-4">
