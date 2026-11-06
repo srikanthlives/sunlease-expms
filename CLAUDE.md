@@ -471,6 +471,111 @@ unique index intact, second run a no-op.
 `backend/expms.db` - that file exists but is empty and stale. Earlier
 notes in this file saying `rm -f expms.db` mean the one under `data/`.
 
+## Bulk export, in the import template's own layout (done)
+Both imports gained a matching export, so the page is now "Bulk Import /
+Export" (nav label and headings updated).
+
+- `GET /bulk-import/export` - expenses, `require_accounts`
+  (`date_from`, `date_to`, `project_id`, `include_cancelled`)
+- `GET /bulk-import/funds-export` - fund transfers, `require_admin`
+  (`date_from`, `date_to`, `funding_entity_id`, `kind`, `include_cancelled`)
+
+**The design point**: an export is written with the *import* HEADERS, so
+it round-trips - download, edit in Excel, upload back. Read-only
+informational columns are appended after them (`Expense #`,
+`Total Amount`, `Payment Status`, `Cancelled`; and `Transfer #`,
+`Verified`, `Cancelled`). Those extras are deliberately **not** part of
+HEADERS: `_read_rows` keys by header name and ignores unknown columns, so
+an exported sheet re-imports untouched. Verified by test, not assumed.
+
+Things that are deliberately excluded, each for a reason:
+- **Cancelled rows**, unless `include_cancelled=true`. They are history;
+  re-importing one would silently resurrect it as a live entry.
+- **Claim-sourced and recurring-sourced expenses.** Only
+  `source_type in (EXPENSE, INVOICE)` is exported - a claim's expense is
+  created by the claim workflow and re-importing it would produce an
+  orphan copy detached from the claim that owns it.
+- **Payment columns on a multi-payment expense.** A single import row
+  can express one payment; an expense with two or more allocations
+  exports with Pay Immediately = N and blank payment columns rather than
+  lying about the first one.
+
+Frontend: an "Export existing records" card on each tab of
+`pages/BulkImport.jsx` with From/To dates and an "Include cancelled"
+checkbox, driven by the same `IMPORTS` config map (`exportPath`,
+`exportFile`, `exportNote`). The card states plainly that
+**re-uploading an export creates new records rather than updating the
+existing ones** - that is the one real foot-gun here, since neither
+import has an update/upsert mode.
+
+Tested against the live API: export headers exactly
+`import headers + extras`; FUNDING / REPAYMENT / TRANSFER rows each
+round-tripping every column with the right account side populated;
+cancelled excluded by default and included+flagged when asked; date,
+kind and entity filters; **an export re-imported with 0 errors** (both
+expenses and funds); expense export containing only INVOICE/DIRECT rows;
+and the permission split (funds export 403 for accounts/manager/
+superaccounts, expense export 403 for manager). Two test-only wrinkles
+worth remembering: openpyxl reads an empty cell back as `None`, not
+`""`; and the expense round-trip must be run as Super Admin, because the
+project-scoped `accounts` user correctly fails on a row for a project
+they are not assigned to.
+
+## Funds: bulk spreadsheet import of transfers / funding (done)
+A second import on the existing Bulk Import page, alongside the expense
+one: upload an .xlsx of funding received, repayments made and transfers
+between your own accounts.
+
+**Refactor that made it safe.** The transfer validation used to live as
+private helpers inside `routers/funds.py`. It moved to
+`services/fund_transfer_service.py` (`resolve_transfer`, `apply_transfer`,
+`next_number`, `validate_entity`, `transfer_audit`, `FUNDING_TYPES`), and
+the request bodies moved to `schemas/funds.py` (`TransferIn`, `EntityIn`,
+`FundAccountIn`, `CancelIn`). `funds.py` keeps one-line aliases
+(`_resolve_transfer = fts.resolve_transfer` etc.) so none of its call
+sites changed. The import builds a real `TransferIn` and runs it through
+the same `resolve_transfer`, so **a spreadsheet can never create a
+transfer the UI would reject** - same rule, same error text. This is the
+same reasoning as `edit_request_service.apply_changes`.
+
+- `services/fund_import_service.py` mirrors `bulk_import_service`'s shape
+  exactly: same row-result dict, same dry-run-then-commit contract, same
+  all-or-nothing rule (one bad row => nothing is written).
+- Columns: Kind, Date, From Account, To Account, Funding Entity, Funding
+  Type, Amount, Reference Number, Remarks. Accounts and entities are
+  matched **by name**, case-insensitive. Kind accepts synonyms
+  (IN/FUND/FUNDING, OUT/REPAY/REPAYMENT, MOVE/TRANSFER). Blank rows are
+  skipped. Remarks are length-checked against the shared 2000 cap.
+- `GET /bulk-import/funds-template` and
+  `POST /bulk-import/fund-transfers?dry_run=`, both **`require_admin`** -
+  note this differs from the expense import above it, which is
+  `require_accounts`; the funds import matches the Funds module's own
+  Admin-only boundary.
+- Imported entries start **unverified**, and their audit entry carries
+  `"source": "BULK_IMPORT"` so a bulk row is distinguishable from a
+  hand-entered one.
+
+Frontend: `pages/BulkImport.jsx` was generalised rather than copied - one
+`ImportPanel` component driven by an `IMPORTS` config map (endpoints,
+template filename, result columns, help text, optional `roles`), with a
+tab bar that only appears when the user can see more than one. Accounts
+and Super Accounts therefore still see exactly the old single-import page
+with no tabs.
+
+Tested against the live API (14 groups, 11 of them per-field): template
+headers and sample rows; dry run reporting 3/3 valid while writing
+nothing; a service-layer rule (repayment with a To Account) caught on
+import; **commit with one bad row importing nothing at all**; every
+per-field validation (bad kind, bad date, non-numeric amount, missing
+amount, unknown account, unknown entity, bad funding type, funding with a
+source, same-account transfer, zero amount, over-long remarks); kind
+synonyms and blank-row skipping; a real commit producing three distinct
+FT- numbers; imported rows unverified; the balance sheet correct
+afterwards; accounts/manager/superaccounts 403 on both endpoints; and
+non-xlsx / empty / garbage files all rejected with 400 rather than 500.
+Every earlier suite (funds, edit, verify, limits, attachments, documents,
+general regression) re-run green after the refactor.
+
 ## App-wide: description popup, textarea entry, 2000-char cap (done)
 Three related changes rolled out across every page, not just Funds.
 

@@ -15,6 +15,7 @@ full list of per-row errors to fix and re-upload. `dry_run=True` runs the
 same validation (and the same DB flushes, to catch numbering/FK issues) then
 rolls back, for a preview pass from the frontend before the user confirms.
 """
+import io
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -300,6 +301,102 @@ def process_workbook(db: Session, file_bytes: bytes, user, dry_run: bool) -> dic
         for r in results
     ]
     return summary
+
+
+#: Informational columns appended to an export. Not part of HEADERS, so
+#: re-importing an exported sheet ignores them (_read_rows keys by header
+#: name; unknown headers are simply unused).
+EXPORT_EXTRA_HEADERS = ["Expense #", "Total Amount", "Payment Status", "Cancelled"]
+
+
+def build_export_workbook(db: Session, date_from=None, date_to=None,
+                          project_id: int | None = None,
+                          include_cancelled: bool = False) -> bytes:
+    """Existing expenses written out in the import template's own column
+    layout, so an export can be edited and fed straight back in.
+
+    Only EXPENSE- and INVOICE-sourced rows are exported: a claim- or
+    recurring-sourced expense is created by its own workflow and has no
+    meaningful representation as an import row (re-importing one would
+    produce an orphan copy, detached from the claim that owns it).
+    Cancelled rows are excluded by default for the same reason - they are
+    history, and re-importing one would resurrect it."""
+    from app.models.models import Expense, Invoice, Payment, PaymentAllocation
+
+    q = db.query(Expense).filter(Expense.source_type.in_((SourceType.INVOICE, SourceType.EXPENSE)))
+    if not include_cancelled:
+        q = q.filter(Expense.status != "CANCELLED")
+    if date_from:
+        q = q.filter(Expense.expense_date >= date_from)
+    if date_to:
+        q = q.filter(Expense.expense_date <= date_to)
+    if project_id:
+        q = q.filter(Expense.project_id == project_id)
+    expenses = q.order_by(Expense.expense_date, Expense.id).all()
+
+    invoices = {}
+    if expenses:
+        for inv in db.query(Invoice).filter(Invoice.expense_id.in_([e.id for e in expenses])).all():
+            invoices[inv.expense_id] = inv
+
+    # First payment against each expense, to round-trip the "Pay
+    # Immediately" columns. A part-paid or multi-payment expense can't be
+    # expressed in a single import row, so only a single allocation is
+    # exported as payment detail.
+    first_payment: dict[int, Payment] = {}
+    if expenses:
+        rows = (db.query(PaymentAllocation.expense_id, Payment)
+                  .join(Payment, Payment.id == PaymentAllocation.payment_id)
+                  .filter(PaymentAllocation.expense_id.in_([e.id for e in expenses]),
+                          Payment.is_cancelled.is_(False))
+                  .order_by(Payment.payment_date, Payment.id).all())
+        counts: dict[int, int] = {}
+        for exp_id, pay in rows:
+            counts[exp_id] = counts.get(exp_id, 0) + 1
+            first_payment.setdefault(exp_id, pay)
+        for exp_id, n in counts.items():
+            if n > 1:
+                first_payment.pop(exp_id, None)  # ambiguous - leave payment columns blank
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Import"
+    ws.append(HEADERS + EXPORT_EXTRA_HEADERS)
+    for e in expenses:
+        inv = invoices.get(e.id)
+        pay = first_payment.get(e.id)
+        ws.append([
+            ROW_TYPE_INVOICE if inv else ROW_TYPE_DIRECT,
+            e.expense_date.isoformat() if e.expense_date else "",
+            e.project.code if e.project else "",
+            e.vendor.vendor_name if e.vendor else "",
+            e.category.name if e.category else "",
+            e.sub_category.name if e.sub_category else "",
+            e.description or "",
+            inv.invoice_number if inv else "",
+            inv.due_date.isoformat() if inv and inv.due_date else "",
+            e.supplier_name or "",
+            e.bill_number or "",
+            float(inv.taxable_amount if inv else e.base_amount),
+            float(inv.cgst) if inv else 0,
+            float(inv.sgst) if inv else 0,
+            float(inv.igst) if inv else 0,
+            float(inv.other_tax if inv else e.other_amount),
+            "Y" if pay else "N",
+            pay.payment_date.isoformat() if pay and pay.payment_date else "",
+            pay.account.account_name if pay and pay.account else "",
+            pay.payment_mode if pay else "",
+            pay.reference_number if pay else "",
+            e.expense_number,
+            float(e.total_amount),
+            e.payment_status,
+            "Y" if e.status == "CANCELLED" else "N",
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
 
 def build_template_workbook() -> bytes:

@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_admin, require_super_admin
 from app.db.session import get_db
 from app.models.models import Account, FundingEntity, FundTransfer, Payment, ReceivablePayment, User
-from app.schemas.common import LongText, OptLongText
+from app.schemas.funds import CancelIn, EntityIn, FundAccountIn, TransferIn
+from app.services import fund_transfer_service as fts
 from app.services import audit_service
 
 # Entire module is Admin / Super Admin only (fund tracking is a
@@ -18,44 +19,15 @@ router = APIRouter(prefix="/api/v1/funds", tags=["funds"], dependencies=[Depends
 
 D = Decimal
 
-
-class EntityIn(BaseModel):
-    name: str
-    notes: OptLongText = None
-    is_active: bool = True
-
-
-class FundAccountIn(BaseModel):
-    account_name: str
-    account_type: str
-    account_number: str | None = None
-    bank_name: str | None = None
-    ifsc: str | None = None
-    funding_entity_id: int | None = None
-    opening_balance: Decimal = D(0)
-    is_active: bool = True
-
-
-FUNDING_TYPES = ("LOAN", "CAPITAL", "ADVANCE", "OTHER")
-
-
-class TransferIn(BaseModel):
-    kind: str  # FUNDING / REPAYMENT / TRANSFER
-    transfer_date: dt.date
-    from_account_id: int | None = None
-    to_account_id: int | None = None
-    # FUNDING/REPAYMENT only; defaults to the involved account's own entity
-    funding_entity_id: int | None = None
-    funding_type: str | None = None  # LOAN / CAPITAL / ADVANCE / OTHER
-    amount: Decimal
-    # Mandatory when editing a VERIFIED transfer; ignored otherwise.
-    edit_reason: OptLongText = None
-    reference_number: str | None = None
-    remarks: OptLongText = None
-
-
-class CancelIn(BaseModel):
-    reason: LongText
+# The business rules live in fund_transfer_service so the API and the bulk
+# spreadsheet import can never diverge; these aliases keep the call sites
+# below unchanged.
+FUNDING_TYPES = fts.FUNDING_TYPES
+_validate_entity = fts.validate_entity
+_next_number = fts.next_number
+_resolve_transfer = fts.resolve_transfer
+_apply_transfer = fts.apply_transfer
+_transfer_audit = fts.transfer_audit
 
 
 def _entity_out(e: FundingEntity):
@@ -133,10 +105,6 @@ def update_entity(entity_id: int, p: EntityIn, db: Session = Depends(get_db), us
 
 
 # ---- Accounts (with entity + opening balance) ----
-def _validate_entity(db, entity_id):
-    if entity_id is not None and not db.get(FundingEntity, entity_id):
-        raise HTTPException(400, "Funding entity not found")
-
 
 @router.get("/accounts")
 def list_accounts(db: Session = Depends(get_db)):
@@ -195,70 +163,6 @@ def list_transfers(
         q = q.filter(FundTransfer.transfer_date <= date_to)
     return [_transfer_out(t) for t in q.order_by(FundTransfer.transfer_date.desc(), FundTransfer.id.desc())]
 
-
-def _next_number(db: Session) -> str:
-    n = (db.query(func.max(FundTransfer.id)).scalar() or 0) + 1
-    while db.query(FundTransfer).filter(FundTransfer.transfer_number == f"FT-{n:05d}").first():
-        n += 1
-    return f"FT-{n:05d}"
-
-
-def _resolve_transfer(db: Session, p: TransferIn) -> tuple[int | None, str | None]:
-    """Validates a create/update payload and resolves the funding entity and
-    funding type. Shared by both paths so they can never drift apart in what
-    they accept. Returns (funding_entity_id, funding_type)."""
-    if p.amount <= 0:
-        raise HTTPException(400, "Amount must be greater than zero")
-    if p.kind not in ("FUNDING", "REPAYMENT", "TRANSFER"):
-        raise HTTPException(400, "kind must be FUNDING, REPAYMENT or TRANSFER")
-    if p.funding_type and p.funding_type not in FUNDING_TYPES:
-        raise HTTPException(400, f"funding_type must be one of {', '.join(FUNDING_TYPES)}")
-
-    from_acc = db.get(Account, p.from_account_id) if p.from_account_id else None
-    to_acc = db.get(Account, p.to_account_id) if p.to_account_id else None
-
-    if p.kind == "TRANSFER":
-        if not to_acc:
-            raise HTTPException(400, "Destination account not found")
-        if not p.from_account_id or not from_acc:
-            raise HTTPException(400, "Source account is required for a transfer")
-        if p.from_account_id == p.to_account_id:
-            raise HTTPException(400, "Source and destination accounts must differ")
-        return None, None
-    if p.kind == "FUNDING":
-        if not to_acc:
-            raise HTTPException(400, "Destination account not found")
-        if p.from_account_id:
-            raise HTTPException(400, "Funding has no source account")
-        entity_id = p.funding_entity_id or to_acc.funding_entity_id
-        if not entity_id:
-            raise HTTPException(400, "Select the funding entity (this account has none assigned)")
-    else:  # REPAYMENT - money going back out to a funding entity
-        if not from_acc:
-            raise HTTPException(400, "Source account is required for a repayment")
-        if p.to_account_id:
-            raise HTTPException(400, "A repayment has no destination account - it leaves the business")
-        entity_id = p.funding_entity_id or from_acc.funding_entity_id
-        if not entity_id:
-            raise HTTPException(400, "Select the funding entity being repaid (this account has none assigned)")
-    _validate_entity(db, entity_id)
-    return entity_id, (p.funding_type or "LOAN")
-
-
-def _apply_transfer(t: FundTransfer, p: TransferIn, entity_id, funding_type) -> None:
-    """Writes a validated payload onto a transfer row, nulling whichever
-    account side the kind doesn't use."""
-    t.transfer_date = p.transfer_date
-    t.kind = p.kind
-    t.from_account_id = p.from_account_id if p.kind in ("TRANSFER", "REPAYMENT") else None
-    t.to_account_id = p.to_account_id if p.kind in ("TRANSFER", "FUNDING") else None
-    t.funding_entity_id = entity_id
-    t.funding_type = funding_type
-    t.amount = p.amount
-    t.reference_number = p.reference_number
-    t.remarks = p.remarks
-
-
 def _guard_verified(t: FundTransfer, actor: User, reason: str | None, what: str) -> None:
     """A verified transfer is locked. Only a Super Admin may change it, and
     only with a reason - which is stored on the row and in the audit log, so
@@ -269,14 +173,6 @@ def _guard_verified(t: FundTransfer, actor: User, reason: str | None, what: str)
         raise HTTPException(403, f"This transfer is verified - only a Super Admin can {what} it")
     if not (reason or "").strip():
         raise HTTPException(400, f"A reason is required to {what} a verified transfer")
-
-
-def _transfer_audit(t: FundTransfer) -> dict:
-    return {"kind": t.kind, "funding_type": t.funding_type, "amount": float(t.amount),
-            "date": str(t.transfer_date), "from": t.from_account_id, "to": t.to_account_id,
-            "entity": t.funding_entity_id, "reference_number": t.reference_number,
-            "remarks": t.remarks}
-
 
 @router.post("/transfers")
 def create_transfer(p: TransferIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):

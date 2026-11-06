@@ -22,7 +22,7 @@ const NAV = [
       { to: "/payments", label: "Payments", icon: Wallet },
       { to: "/claims", label: "Employee Claims", icon: ClipboardList },
       { to: "/recurring-expenses", label: "Recurring Expenses", icon: Repeat },
-      { to: "/bulk-import", label: "Bulk Import", icon: UploadCloud, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"] },
+      { to: "/bulk-import", label: "Bulk Import / Export", icon: UploadCloud, roles: ["ADMIN", "SUPER_ADMIN", "ACCOUNTS", "SUPER_ACCOUNTS"] },
     ],
   },
   {
