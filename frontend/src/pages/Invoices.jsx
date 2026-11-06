@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate, vendorLabel, TruncatedText } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -225,7 +225,7 @@ export default function Invoices() {
             },
             {
               key: "po_number", header: "PO Number",
-              render: (r) => { const text = r.po_number || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
+              render: (r) => <TruncatedText text={r.po_number} width={150} />,
             },
             { key: "invoice_date", header: "Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
             { key: "due_date", header: "Due Date", sortable: true, render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
@@ -237,14 +237,7 @@ export default function Invoices() {
             { key: "sub_category_id", header: "Sub-Head", sortable: true, render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—" },
             {
               key: "description", header: "Description",
-              render: (r) => {
-                const text = r.description || "";
-                return text ? (
-                  <span title={text} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
-                    {text}
-                  </span>
-                ) : "—";
-              },
+              render: (r) => <TruncatedText text={r.description} width={280} />,
             },
             { key: "taxable_amount", header: "Taxable", sortable: true, align: "right", render: (r) => <span className="tabular">{formatMoney(r.taxable_amount)}</span> },
             {
@@ -400,7 +393,7 @@ function InvoiceForm({ masters, onClose, onCreated }) {
           <SubCategorySelect categoryId={form.category_id} value={form.sub_category_id} onChange={(v) => set("sub_category_id", v)} />
         </div>
         <Textarea label="PO Number(s)" value={form.po_number} onChange={(e) => set("po_number", e.target.value)} rows={2} placeholder="One or more PO numbers, e.g. one per line" />
-        <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <Textarea label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
         <div className="grid grid-cols-5 gap-4">
           <Input label="Taxable Amount" type="number" step="0.01" value={form.taxable_amount} onChange={(e) => set("taxable_amount", e.target.value)} required />
           <Input label="CGST" type="number" step="0.01" value={form.cgst} onChange={(e) => set("cgst", e.target.value)} />

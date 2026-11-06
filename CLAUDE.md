@@ -471,6 +471,126 @@ unique index intact, second run a no-op.
 `backend/expms.db` - that file exists but is empty and stale. Earlier
 notes in this file saying `rm -f expms.db` mean the one under `data/`.
 
+## App-wide: description popup, textarea entry, 2000-char cap (done)
+Three related changes rolled out across every page, not just Funds.
+
+**1. `TruncatedText` everywhere a description appears.** Every
+description / remarks / notes / po_number column in every table now uses
+the shared `TruncatedText` cell (see its own section below) instead of a
+hand-rolled truncation. Replaced four different ad-hoc patterns that had
+accumulated: a `style={{width: "30ch"}}` + native `title=` tooltip
+(Expenses, Invoices, Receivables x2), a `max-w-[160px] truncate` + title
+(Payments, RecurringExpenses), and *un*truncated `whitespace-normal
+break-words` blocks that made claim rows multiple lines tall (Claims x2).
+Also added to the two columns that had no truncation at all (Masters
+project description, UsersAdmin role description). Native `title=`
+tooltips can't be copied, don't render multi-line text properly and are
+slow to appear - that's the whole reason for the swap. Short identifier
+columns (vendor/project/category name, bill number, payee) were left on
+their existing `title=` truncation deliberately; they are labels, not
+free text.
+
+**2. Descriptions are entered in a textarea, not a one-line input.**
+Converted 13 `<Input label="Description|Remarks|Notes|Reason">` fields to
+`<Textarea>` across Claims (claim + line + reject reason), Expenses,
+Invoices, Receivables x3, RecurringExpenses, RecurringExpenseApprovals,
+Masters, UsersAdmin x2. `EditEntityModal`'s description/remarks fields
+switched from `type: "text"` to `type: "textarea"` (which that component
+already supported, and which also makes them span both form columns).
+`Textarea` now defaults to **4 rows** (was 3).
+
+**Behaviour change worth knowing**: `Input` auto-uppercases its value by
+default (`NON_UPPERCASE_TYPES` in ui.jsx); `Textarea` does not. So newly
+typed descriptions are no longer force-uppercased. Existing rows keep
+whatever case they were stored with, so lists will show a mix for a
+while. This is an improvement for paragraph-length text, but it is a
+visible change, not an accident.
+
+**3. A 2000-character cap on free text.** Note the schema reality: every
+one of these fields is a SQLAlchemy `Text` column, and SQLite does not
+length-limit `TEXT` at all - so there was no "database size" to validate
+against. 2000 is a deliberate product limit (chosen by the user after
+being told this), not a schema-derived one.
+- Single source of truth: `TEXT_FIELD_MAX_LENGTH` in
+  `app/schemas/common.py`, exposed as the `LongText` / `OptLongText`
+  annotated Pydantic types. Mirrored by `TEXT_FIELD_MAX` in
+  `components/ui.jsx` - the two must stay in sync, noted in both files.
+- Applied to **request** schemas only (28 fields across auth, masters,
+  transactions, receivables, recurring_expenses, edit_requests, plus the
+  `EntityIn`/`TransferIn`/`CancelIn` models inside `routers/funds.py`).
+  **Never to `*Out` response schemas** - constraining a response would
+  make any pre-existing row longer than the cap unreadable through the
+  API. Verified: a 5000-char description written directly to the DB still
+  reads back in full.
+- `edit_request_service.validate_fields()` got its own explicit length
+  check, because edit requests carry a raw `changes` dict and so bypass
+  Pydantic entirely - without it that path is a way around the cap.
+- Frontend: `Textarea` sets `maxLength` and shows a live `n/2000` counter
+  that turns amber in the last 10%. Pass `maxLength={0}` to opt out.
+
+Tested against the live API: over-limit rejected 422 on project
+description, expense description, claim description, claim *line*
+description, funding-entity notes, fund-transfer remarks and cancel
+reason; exactly 2000 accepted at the boundary and read back at full
+length; the edit-request path rejected with 400 (and accepted at exactly
+2000); and a pre-existing 5000-char value still readable. Frontend
+`npm run build` and `npm run lint` clean (21 pre-existing warnings, none
+in touched files). Full backend regression plus the documents and
+verification suites re-run green.
+
+**One trap hit while doing this**: a scripted replacement of
+`TransferIn.remarks` silently no-opped because the real field order
+differed from the pattern I matched, and the test for it was the only
+reason it surfaced. Every scripted edit in this project should assert its
+pattern matched before writing - several of the replacements here did,
+that one did not.
+
+## Funds: attachments on transfers / funding (done)
+Transfers and funding entries take file attachments (bank advice, cheque
+scan, signed acknowledgement) through the **existing** documents system
+rather than anything new - `DocumentType.FUND_TRANSFER` plus
+`Document.fund_transfer_id` (new nullable FK, additive so `migrate.py`
+picked it up on restart).
+
+- `POST /documents` accepts `fund_transfer_id` + `document_type=FUND_TRANSFER`;
+  `GET /documents/by-entity?fund_transfer_id=`, download and delete all
+  understand it. Same extension/MIME/size validation as every other upload.
+- Storage folder: `DOCUMENT_FOLDER_FUND_TRANSFER` (env
+  `EXPMS_DOCUMENT_FOLDER_FUND_TRANSFER`, default `fund-transfers`). A fund
+  transfer has no project, so files land under the `default` project code,
+  and - like claims - are grouped in a folder named after the **transfer
+  number** rather than the upload date, so everything supporting FT-00007
+  sits together: `<project>/default/fund-transfers/FT-00007/<uuid>.ext`.
+- **Permissions are the important part.** Other document types allow any
+  authenticated user to list/download; fund-transfer attachments instead
+  inherit the Funds module's own boundary via
+  `_authorize_fund_transfer_document()` - Admin/Super Admin only for
+  upload, list, download *and* delete. Accounts/Super Accounts/Manager/
+  Employee/Viewer get 403 on all four.
+- The verification lock extends to attachments the same way Payments does
+  it: once a transfer is verified only Super Admin can **delete** an
+  attachment, but Admin can still add and view them - supporting proof
+  isn't financial data, and attaching the bank advice after sign-off is a
+  normal thing to want.
+- Frontend: an Attachments column on the Transfers & Funding table reusing
+  `components/Attachments.jsx` (which gained a `fundTransferId` prop -
+  its `entityParams` map does the rest), with the existing eager
+  count badge. `readOnly` on a cancelled row, and
+  `canDelete={isSuperAdmin || !r.is_verified}` to mirror the server rule.
+
+Tested against the live API: upload as both Super Admin and Admin, listing
+scoped to the right transfer (a second transfer sees none), download
+returning byte-identical content, the stored path confirmed to use a
+per-transfer folder and a uuid filename (never the original), disallowed
+extension / no-entity-id / unknown-transfer-id all 400,
+accounts+manager+superaccounts 403 on upload/list/download/delete, Admin
+delete allowed while unverified then 403 once verified, Admin still able
+to view and add after verification, Super Admin delete working, and the
+Document row actually removed. Plus a documents regression on the
+pre-existing paths (expense attachment upload/list/download/delete, and
+**Accounts still having its normal document access** - checking the new
+guard isn''t over-broad).
+
 ## Shared `TruncatedText` cell + one-line table rows (done)
 `components/ui.jsx` gained **`TruncatedText`** - a reusable one-line cell
 for arbitrarily long free text (remarks, notes, references). It clamps to

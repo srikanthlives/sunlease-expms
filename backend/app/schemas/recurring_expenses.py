@@ -2,6 +2,7 @@ import datetime as dt
 from decimal import Decimal
 
 from pydantic import BaseModel, model_validator
+from app.schemas.common import LongText, OptLongText
 
 
 class RecurringExpenseCreate(BaseModel):
@@ -18,7 +19,7 @@ class RecurringExpenseCreate(BaseModel):
     employee_id: int | None = None
     category_id: int
     sub_category_id: int | None = None
-    description: str | None = None
+    description: OptLongText = None
     next_occurrence_date: dt.date
     is_active: bool = True
 
@@ -101,13 +102,13 @@ class RecurringExpenseInstanceOut(BaseModel):
 class InstanceReviewRequest(BaseModel):
     amount: Decimal | None = None
     bill_number: str | None = None
-    description: str | None = None
+    description: OptLongText = None
     cgst: Decimal | None = None
     sgst: Decimal | None = None
     igst: Decimal | None = None
     other_tax: Decimal | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 class InstanceRejectRequest(BaseModel):
-    reason: str
+    reason: LongText

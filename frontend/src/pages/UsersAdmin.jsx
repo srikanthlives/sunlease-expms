@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, Button, Input, Select } from "../components/ui";
+import { Card, Table, Button, Input, Textarea, Select, TruncatedText } from "../components/ui";
 import { Plus, X, KeyRound, ShieldCheck, ShieldOff, Pencil, AlertTriangle } from "lucide-react";
 
 export default function UsersAdmin() {
@@ -98,7 +98,7 @@ export default function UsersAdmin() {
         <Table
           columns={[
             { key: "name", header: "Role" },
-            { key: "description", header: "Description" },
+            { key: "description", header: "Description", render: (r) => <TruncatedText text={r.description} width={320} /> },
             ...(isSuperAdmin ? [{
               key: "actions", header: "Actions",
               render: (r) => (
@@ -143,7 +143,7 @@ function RoleForm({ onClose, onCreated }) {
       <h3 className="font-display font-semibold text-lg mb-4">New Role</h3>
       <form onSubmit={submit} className="space-y-4">
         <Input label="Role Name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. AUDITOR" autoFocus />
-        <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Textarea label="Description" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Create Role"}</Button>
       </form>
@@ -309,7 +309,7 @@ function EditRoleModal({ role, onClose, onSaved }) {
         <h3 className="font-display font-semibold text-lg mb-4">Edit Role</h3>
         <form onSubmit={submit} className="space-y-4">
           <Input label="Role Name" required value={form.name} onChange={(e) => set("name", e.target.value)} autoFocus />
-          <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
+          <Textarea label="Description" rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
           {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
           <Button type="submit" disabled={busy} className="w-full">{busy ? "Saving…" : "Save Changes"}</Button>
         </form>

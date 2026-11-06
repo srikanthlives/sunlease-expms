@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, StatCard, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate } from "../components/ui";
+import { Card, Table, StatusBadge, StatCard, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate, TruncatedText } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import { Plus, X, Trash2, Pencil, Send, CheckCircle2, XCircle, ArrowRightCircle, FileDown } from "lucide-react";
@@ -141,7 +141,7 @@ function QuotationForm({ editing, onClose, onSaved }) {
           <Input label="Proforma Date" type="date" value={form.quotation_date} onChange={(e) => set("quotation_date", e.target.value)} required />
           <Input label="Valid Until" type="date" value={form.valid_until} onChange={(e) => set("valid_until", e.target.value)} />
         </div>
-        <Input label="Description" value={form.description || ""} onChange={(e) => set("description", e.target.value)} />
+        <Textarea label="Description" value={form.description || ""} onChange={(e) => set("description", e.target.value)} />
         <TaxFields form={form} set={set} />
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <div className="flex gap-2">
@@ -291,11 +291,7 @@ function QuotationsTab({ canManage }) {
             { key: "valid_until", header: "Valid Until", render: (r) => <span className="whitespace-nowrap">{r.valid_until ? formatDate(r.valid_until) : "—"}</span> },
             {
               key: "description", header: "Description",
-              render: (r) => r.description ? (
-                <span title={r.description} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
-                  {r.description}
-                </span>
-              ) : "—",
+              render: (r) => <TruncatedText text={r.description} width={280} />,
             },
             { key: "taxable_amount", header: "Taxable Value", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
             { key: "tax", header: "GST", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
@@ -441,7 +437,7 @@ function ReceivableInvoiceForm({ editing, onClose, onSaved }) {
           <Input label="Due Date" type="date" value={form.due_date} onChange={(e) => set("due_date", e.target.value)} />
         </div>
         <Textarea label="PO Number(s)" value={form.po_number || ""} onChange={(e) => set("po_number", e.target.value)} rows={2} placeholder="Customer's PO number(s), if any - e.g. one per line" />
-        <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <Textarea label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
         <TaxFields form={form} set={set} />
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <div className="flex gap-2">
@@ -578,17 +574,13 @@ function InvoicesTab({ canManage }) {
             },
             {
               key: "po_number", header: "PO Number",
-              render: (r) => { const text = r.po_number || "—"; return <span title={text} className="block max-w-[140px] truncate">{text}</span>; },
+              render: (r) => <TruncatedText text={r.po_number} width={150} />,
             },
             { key: "invoice_date", header: "Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.invoice_date)}</span> },
             { key: "due_date", header: "Due Date", render: (r) => <span className="whitespace-nowrap">{r.due_date ? formatDate(r.due_date) : "—"}</span> },
             {
               key: "description", header: "Description",
-              render: (r) => r.description ? (
-                <span title={r.description} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
-                  {r.description}
-                </span>
-              ) : "—",
+              render: (r) => <TruncatedText text={r.description} width={280} />,
             },
             { key: "taxable_amount", header: "Taxable Value", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(r.taxable_amount)}</span> },
             { key: "tax", header: "GST", align: "right", render: (r) => <span className="tabular whitespace-nowrap">{formatMoney(taxOf(r))}</span> },
@@ -830,7 +822,7 @@ function ReceivablePaymentEditForm({ editing, onClose, onSaved }) {
           </Select>
           <Input label="Reference / UTR" value={form.reference_number} onChange={(e) => set("reference_number", e.target.value)} />
         </div>
-        <Input label="Remarks" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} />
+        <Textarea label="Remarks" rows={3} value={form.remarks} onChange={(e) => set("remarks", e.target.value)} />
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <div className="flex gap-2">
           <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save Changes"}</Button>

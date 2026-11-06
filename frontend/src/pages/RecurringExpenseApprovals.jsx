@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Button, Input, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Button, Input, Textarea, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
 import { CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 
 function emptyReview(row) {
@@ -139,7 +139,7 @@ export default function RecurringExpenseApprovals() {
                             onChange={(e) => setField(row, "other_tax", e.target.value)} />
                         </div>
                       )}
-                      <Input label="Description"
+                      <Textarea label="Description" rows={3}
                         value={r.description}
                         placeholder={`Description that will be recorded on the ${isVendor ? "Invoice" : "Expense"}`}
                         onChange={(e) => setField(row, "description", e.target.value)} />

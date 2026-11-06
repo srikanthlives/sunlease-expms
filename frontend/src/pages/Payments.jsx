@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel, TruncatedText } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -252,7 +252,7 @@ export default function Payments() {
             },
             {
               key: "remarks", header: "Remarks",
-              render: (r) => { const text = r.remarks || "—"; return <span title={text} className="block max-w-[160px] truncate">{text}</span>; },
+              render: (r) => <TruncatedText text={r.remarks} width={200} />,
             },
             {
               key: "is_cancelled", header: "Status", sortable: true,

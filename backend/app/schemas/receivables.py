@@ -2,6 +2,7 @@ import datetime as dt
 from decimal import Decimal
 
 from pydantic import BaseModel
+from app.schemas.common import LongText, OptLongText
 
 
 # ---------------------------------------------------------------------------
@@ -14,7 +15,7 @@ class QuotationCreate(BaseModel):
     project_id: int | None = None
     quotation_date: dt.date
     valid_until: dt.date | None = None
-    description: str | None = None
+    description: OptLongText = None
     taxable_amount: Decimal
     cgst: Decimal = Decimal("0")
     sgst: Decimal = Decimal("0")
@@ -48,7 +49,7 @@ class QuotationOut(BaseModel):
 
 
 class QuotationRejectRequest(BaseModel):
-    reason: str | None = None
+    reason: OptLongText = None
 
 
 class QuotationConvertRequest(BaseModel):
@@ -67,8 +68,8 @@ class ReceivableInvoiceCreate(BaseModel):
     project_id: int | None = None
     invoice_date: dt.date
     due_date: dt.date | None = None
-    po_number: str | None = None
-    description: str | None = None
+    po_number: OptLongText = None
+    description: OptLongText = None
     taxable_amount: Decimal
     cgst: Decimal = Decimal("0")
     sgst: Decimal = Decimal("0")
@@ -105,7 +106,7 @@ class ReceivableInvoiceOut(BaseModel):
 
 
 class ReceivableCancelRequest(BaseModel):
-    reason: str | None = None
+    reason: OptLongText = None
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +123,7 @@ class ReceivablePaymentCreate(BaseModel):
     account_id: int
     payment_mode: str
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
     allocations: list[ReceivablePaymentAllocationIn]
 
 
@@ -135,7 +136,7 @@ class ReceivablePaymentUpdate(BaseModel):
     account_id: int | None = None
     payment_mode: str | None = None
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 class ReceivablePaymentAllocationOut(BaseModel):

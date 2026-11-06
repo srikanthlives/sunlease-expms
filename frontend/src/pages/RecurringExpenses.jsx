@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useMasters } from "../hooks/useMasters";
-import { Card, Table, Button, Input, Select, StatusBadge, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, Button, Input, Textarea, Select, StatusBadge, formatMoney, formatDate, vendorLabel, TruncatedText } from "../components/ui";
 import { Plus, X, Pencil, Power, ShieldCheck, ShieldOff, Trash2, ChevronLeft, ChevronRight, Columns3, FileDown } from "lucide-react";
 
 const PAGE_SIZES = [25, 50, 100];
@@ -196,7 +196,7 @@ function TemplateForm({ masters, editing, onClose, onSaved }) {
             {subCats.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </Select>
         </div>
-        <Input label="Description / Notes" value={form.description || ""} onChange={(e) => set("description", e.target.value)} />
+        <Textarea label="Description / Notes" value={form.description || ""} onChange={(e) => set("description", e.target.value)} />
 
         {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
         <Button type="submit" disabled={busy}>{busy ? "Saving…" : editing ? "Save Changes" : "Create"}</Button>
@@ -302,7 +302,7 @@ function TemplatesTab({ masters }) {
       sortAccessor: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "",
       render: (r) => r.sub_category_id ? subCategoryName(r.sub_category_id) : "—",
     },
-    { key: "description", header: "Description", render: (r) => <span title={r.description || ""} className="block max-w-[220px] truncate text-ink/60">{r.description || "—"}</span> },
+    { key: "description", header: "Description", render: (r) => <TruncatedText text={r.description} width={240} className="text-ink/60" /> },
     { key: "next_occurrence_date", header: "Next Bill Date", sortable: true, render: (r) => formatDate(r.next_occurrence_date) },
     { key: "is_active", header: "Status", sortable: true, render: (r) => <StatusBadge status={r.is_active ? "ACTIVE" : "CANCELLED"} /> },
     {

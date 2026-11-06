@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, Input, Select, formatMoney, formatDate } from "../components/ui";
+import { Card, Table, StatusBadge, Button, Input, Textarea, Select, formatMoney, formatDate, TruncatedText } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import SubCategorySelect from "../components/SubCategorySelect";
@@ -194,7 +194,7 @@ export function ClaimsList({ mineOnly = false, approvalsOnly = false }) {
             { key: "category_id", header: "Overall Head", sortable: true, render: (r) => categoryName(r.category_id) },
             {
               key: "description", header: "Description",
-              render: (r) => <span className="block min-w-[260px] max-w-[420px] whitespace-normal break-words text-ink/60">{r.description || "—"}</span>,
+              render: (r) => <TruncatedText text={r.description} width={320} className="text-ink/60" />,
             },
             { key: "claim_date", header: "Date", sortable: true, render: (r) => formatDate(r.claim_date) },
             { key: "total_amount", header: "Amount", align: "right", sortable: true, render: (r) => <span className="tabular">{formatMoney(r.total_amount)}</span> },
@@ -420,7 +420,7 @@ export function ClaimDetail() {
             { key: "expense_sub_head_id", header: "Sub-Head", render: (r) => masters.subCategories.find((s) => s.id === r.expense_sub_head_id)?.name || "—" },
             {
               key: "description", header: "Description",
-              render: (r) => <span className="block min-w-[280px] max-w-[520px] whitespace-normal break-words">{r.description || "—"}</span>,
+              render: (r) => <TruncatedText text={r.description} width={360} />,
             },
             { key: "amount", header: "Amount", align: "right", render: (r) => <span className="tabular">{formatMoney(r.amount)}</span> },
             {
@@ -464,7 +464,7 @@ export function ClaimDetail() {
       {showReject && (
         <Card className="max-w-md">
           <h3 className="font-medium mb-2">Reject claim</h3>
-          <Input label="Reason" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+          <Textarea label="Reason" rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
           <div className="flex gap-2 mt-3">
             <Button variant="danger" onClick={() => { act("reject", { reason: rejectReason }); setShowReject(false); }}>Confirm Reject</Button>
             <Button variant="ghost" onClick={() => setShowReject(false)}>Cancel</Button>
@@ -562,7 +562,7 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
             {masters.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </div>
-        <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <Textarea label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
 
         <div className="space-y-2">
           <div className="text-xs font-medium text-ink/60">Expense Lines (under {masters.categories.find((c) => c.id === Number(categoryId))?.name || "the Overall Head above"})</div>
@@ -595,7 +595,7 @@ function ClaimForm({ masters, defaultEmployeeId, editingClaim, onClose, onCreate
                 <SubCategorySelect label="Sub-Head" categoryId={l.expense_head_id} value={l.expense_sub_head_id} onChange={(v) => updateLine(i, "expense_sub_head_id", v)} />
               </div>
               <div className="col-span-3">
-                <Input label="Description" value={l.description} onChange={(e) => updateLine(i, "description", e.target.value)} />
+                <Textarea label="Description" rows={2} value={l.description} onChange={(e) => updateLine(i, "description", e.target.value)} />
               </div>
               <div className="col-span-2">
                 <Input label="Amount" type="number" step="0.01" value={l.amount} onChange={(e) => updateLine(i, "amount", e.target.value)} required />

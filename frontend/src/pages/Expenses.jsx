@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
 import { useMasters } from "../hooks/useMasters";
 import { useAuth } from "../context/AuthContext";
-import { Card, Table, StatusBadge, Button, IconButton, Input, Select, formatMoney, formatDate, vendorLabel } from "../components/ui";
+import { Card, Table, StatusBadge, Button, IconButton, Input, Textarea, Select, formatMoney, formatDate, vendorLabel, TruncatedText } from "../components/ui";
 import DateRangePicker, { defaultMonthRange } from "../components/DateRangePicker";
 import Attachments from "../components/Attachments";
 import EditEntityModal from "../components/EditEntityModal";
@@ -293,14 +293,7 @@ export default function Expenses() {
             },
             {
               key: "description", header: "Description",
-              render: (r) => {
-                const text = r.description || "";
-                return text ? (
-                  <span title={text} className="block whitespace-nowrap overflow-hidden text-ellipsis" style={{ width: "30ch" }}>
-                    {text}
-                  </span>
-                ) : "—";
-              },
+              render: (r) => <TruncatedText text={r.description} width={280} />,
             },
             {
               key: "payment_status", header: "Payment", sortable: true,
@@ -465,7 +458,7 @@ function ExpenseForm({ masters, onClose, onCreated }) {
           </div>
           <Input label="Voucher / Bill No" value={form.bill_number} onChange={(e) => set("bill_number", e.target.value)} />
         </div>
-        <Input label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <Textarea label="Description" value={form.description} onChange={(e) => set("description", e.target.value)} />
         <div className="grid grid-cols-4 gap-4">
           <Input label="Base Amount" type="number" step="0.01" value={form.base_amount} onChange={(e) => set("base_amount", e.target.value)} required />
           <Input label="GST Amount" type="number" step="0.01" value={form.gst_amount} onChange={(e) => set("gst_amount", e.target.value)} />

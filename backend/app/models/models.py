@@ -520,6 +520,7 @@ class Document(Base):
     payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True)
     quotation_id = Column(Integer, ForeignKey("quotations.id"), nullable=True)
     receivable_invoice_id = Column(Integer, ForeignKey("receivable_invoices.id"), nullable=True)
+    fund_transfer_id = Column(Integer, ForeignKey("fund_transfers.id"), nullable=True)
 
     document_type = Column(String(30), nullable=False)  # DocumentType
     original_filename = Column(String(500), nullable=False)

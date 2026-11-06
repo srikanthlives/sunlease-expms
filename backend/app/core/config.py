@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     DOCUMENT_FOLDER_EXPENSE: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_EXPENSE", "expenses")
     DOCUMENT_FOLDER_INVOICE: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_INVOICE", "invoices")
     DOCUMENT_FOLDER_PAYMENT: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_PAYMENT", "payments")
+    DOCUMENT_FOLDER_FUND_TRANSFER: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_FUND_TRANSFER", "fund-transfers")
     # Used for both CLAIM (overall claim attachment) and CLAIM_LINE (per-line proof).
     DOCUMENT_FOLDER_CLAIM: str = os.environ.get("EXPMS_DOCUMENT_FOLDER_CLAIM", "employee-claims")
     

@@ -8,7 +8,7 @@ import { X, CheckCircle2 } from "lucide-react";
 const FIELD_SETS = {
   EXPENSE: (masters) => [
     { key: "expense_date", label: "Date", type: "date" },
-    { key: "description", label: "Description", type: "text" },
+    { key: "description", label: "Description", type: "textarea" },
     { key: "project_id", label: "Project", type: "select", options: masters.projects, optionLabel: "name" },
     { key: "supplier_name", label: "Supplier Name", type: "text" },
     { key: "bill_number", label: "Voucher / Bill No", type: "text" },
@@ -28,7 +28,7 @@ const FIELD_SETS = {
     { key: "project_id", label: "Project", type: "select", options: masters.projects, optionLabel: "name" },
     { key: "category_id", label: "Category", type: "select", options: masters.categories, optionLabel: "name" },
     { key: "sub_category_id", label: "Sub-Category", type: "select", options: masters.subCategories, optionLabel: "name", dependsOn: "category_id" },
-    { key: "description", label: "Description", type: "text" },
+    { key: "description", label: "Description", type: "textarea" },
     { key: "taxable_amount", label: "Taxable Amount", type: "number" },
     { key: "cgst", label: "CGST", type: "number" },
     { key: "sgst", label: "SGST", type: "number" },
@@ -45,7 +45,7 @@ const FIELD_SETS = {
     { key: "account_id", label: "Account", type: "select", options: masters.accounts, optionLabel: "account_name" },
     { key: "payment_mode", label: "Payment Mode", type: "select", options: [{ id: "NEFT" }, { id: "RTGS" }, { id: "IMPS" }, { id: "UPI" }, { id: "CASH" }, { id: "CHEQUE" }], optionLabel: "id", staticOptions: true },
     { key: "reference_number", label: "Reference / UTR", type: "text" },
-    { key: "remarks", label: "Remarks", type: "text" },
+    { key: "remarks", label: "Remarks", type: "textarea" },
   ],
 };
 

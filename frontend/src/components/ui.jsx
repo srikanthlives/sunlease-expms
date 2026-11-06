@@ -123,16 +123,39 @@ export function Input({ label, error, className = "", type, onChange, uppercase,
   );
 }
 
-export function Textarea({ label, error, className = "", rows = 3, ...props }) {
+/** Shared character cap for free-text fields (description / remarks /
+ * notes / reason). These are unbounded `Text` columns in the database, so
+ * this is a deliberate product limit, not a schema-derived one.
+ * Must stay in sync with TEXT_FIELD_MAX_LENGTH in
+ * backend/app/schemas/common.py, which rejects anything longer. */
+export const TEXT_FIELD_MAX = 2000;
+
+/** Multi-line free-text field. Defaults to 4 rows (tall enough to write a
+ * real description in) and caps input at `maxLength` with a live counter
+ * that turns amber in the last 10%. Pass `maxLength={0}` to opt out of
+ * both the cap and the counter. */
+export function Textarea({
+  label, error, className = "", rows = 4, maxLength = TEXT_FIELD_MAX, showCount = true, ...props
+}) {
+  const length = typeof props.value === "string" ? props.value.length : 0;
+  const near = !!maxLength && length > maxLength * 0.9;
   return (
     <label className="block">
       {label && <span className="block text-xs font-medium text-ink/60 mb-1">{label}</span>}
       <textarea
         rows={rows}
+        maxLength={maxLength || undefined}
         className={`w-full rounded-md border border-ink/15 px-3 py-2 text-sm bg-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none resize-y ${className}`}
         {...props}
       />
-      {error && <span className="text-xs text-danger mt-1 block">{error}</span>}
+      <span className="mt-1 flex items-start justify-between gap-2">
+        <span className="text-xs text-danger">{error}</span>
+        {showCount && !!maxLength && (
+          <span className={`shrink-0 text-xs tabular ${near ? "text-warn" : "text-ink/35"}`}>
+            {length}/{maxLength}
+          </span>
+        )}
+      </span>
     </label>
   );
 }

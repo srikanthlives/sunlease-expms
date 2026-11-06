@@ -2,6 +2,7 @@ import datetime as dt
 from decimal import Decimal
 
 from pydantic import BaseModel
+from app.schemas.common import LongText, OptLongText
 
 
 # ---------------------------------------------------------------------------
@@ -17,7 +18,7 @@ class ExpenseUpdate(BaseModel):
     employee_id: int | None = None
     category_id: int | None = None
     sub_category_id: int | None = None
-    description: str | None = None
+    description: OptLongText = None
     supplier_name: str | None = None
     bill_number: str | None = None
     base_amount: Decimal | None = None
@@ -28,12 +29,12 @@ class ExpenseUpdate(BaseModel):
 
 class InvoiceUpdate(BaseModel):
     invoice_number: str | None = None
-    po_number: str | None = None
+    po_number: OptLongText = None
     vendor_id: int | None = None
     invoice_date: dt.date | None = None
     due_date: dt.date | None = None
     project_id: int | None = None
-    description: str | None = None
+    description: OptLongText = None
     taxable_amount: Decimal | None = None
     cgst: Decimal | None = None
     sgst: Decimal | None = None
@@ -50,7 +51,7 @@ class PaymentUpdate(BaseModel):
     account_id: int | None = None
     payment_mode: str | None = None
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +81,8 @@ class EditRequestOut(BaseModel):
 
 
 class EditRequestApprove(BaseModel):
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 class EditRequestReject(BaseModel):
-    reason: str
+    reason: LongText

@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
+from app.schemas.common import LongText, OptLongText
 
 
 class Token(BaseModel):
@@ -51,12 +52,12 @@ class UserUpdate(BaseModel):
 
 class RoleCreate(BaseModel):
     name: str
-    description: str | None = None
+    description: OptLongText = None
 
 
 class RoleUpdate(BaseModel):
     name: str | None = None
-    description: str | None = None
+    description: OptLongText = None
 
 
 class RoleOut(BaseModel):

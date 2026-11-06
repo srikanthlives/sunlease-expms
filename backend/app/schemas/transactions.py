@@ -2,6 +2,7 @@ import datetime as dt
 from decimal import Decimal
 
 from pydantic import BaseModel, EmailStr, field_validator
+from app.schemas.common import LongText, OptLongText
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +49,7 @@ class DirectExpenseCreate(BaseModel):
     sub_category_id: int | None = None
     supplier_name: str | None = None
     bill_number: str | None = None
-    description: str | None = None
+    description: OptLongText = None
     base_amount: Decimal
     gst_amount: Decimal = Decimal("0")
     other_amount: Decimal = Decimal("0")
@@ -59,7 +60,7 @@ class DirectExpenseCreate(BaseModel):
     account_id: int | None = None
     payment_mode: str | None = None
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
     @field_validator("base_amount")
     @classmethod
@@ -70,7 +71,7 @@ class DirectExpenseCreate(BaseModel):
 
 
 class CancelRequest(BaseModel):
-    reason: str | None = None
+    reason: OptLongText = None
 
 
 # ---------------------------------------------------------------------------
@@ -79,14 +80,14 @@ class CancelRequest(BaseModel):
 
 class InvoiceCreate(BaseModel):
     invoice_number: str
-    po_number: str | None = None
+    po_number: OptLongText = None
     vendor_id: int
     invoice_date: dt.date
     due_date: dt.date | None = None
     project_id: int | None = None
     category_id: int
     sub_category_id: int | None = None
-    description: str | None = None
+    description: OptLongText = None
     taxable_amount: Decimal
     cgst: Decimal = Decimal("0")
     sgst: Decimal = Decimal("0")
@@ -99,7 +100,7 @@ class InvoiceCreate(BaseModel):
     account_id: int | None = None
     payment_mode: str | None = None
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 class InvoiceOut(BaseModel):
@@ -143,7 +144,7 @@ class ClaimLineIn(BaseModel):
     expense_date: dt.date
     expense_head_id: int
     expense_sub_head_id: int | None = None
-    description: str | None = None
+    description: OptLongText = None
     amount: Decimal
 
 
@@ -159,14 +160,14 @@ class ClaimCreate(BaseModel):
     employee_id: int
     project_id: int | None = None
     category_id: int
-    description: str | None = None
+    description: OptLongText = None
     lines: list[ClaimLineIn]
 
 
 class ClaimUpdate(BaseModel):
     project_id: int | None = None
     category_id: int
-    description: str | None = None
+    description: OptLongText = None
     lines: list[ClaimLineIn]
 
 
@@ -193,7 +194,7 @@ class ClaimOut(BaseModel):
 
 
 class RejectRequest(BaseModel):
-    reason: str
+    reason: LongText
 
 
 class EmailPdfRequest(BaseModel):
@@ -216,7 +217,7 @@ class PaymentCreate(BaseModel):
     account_id: int
     payment_mode: str
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
     allocations: list[AllocationIn]
 
 
@@ -270,6 +271,7 @@ class DocumentOut(BaseModel):
     payment_id: int | None = None
     quotation_id: int | None = None
     receivable_invoice_id: int | None = None
+    fund_transfer_id: int | None = None
 
     class Config:
         from_attributes = True

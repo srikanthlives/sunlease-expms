@@ -5,8 +5,10 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
 
 /**
  * Attach & preview documents (invoices/bills, payment receipts, employee
- * proof screenshots) against any entity. Pass exactly one of expenseId /
- * invoiceId / paymentId / claimId / claimLineId, matching `documentType`.
+ * proof screenshots, fund-transfer bank advices) against any entity. Pass
+ * exactly one of expenseId / invoiceId / paymentId / claimId / claimLineId /
+ * quotationId / receivableInvoiceId / fundTransferId, matching
+ * `documentType`.
  *
  * Pass `claimFullId` instead (with `readOnly`) for a combined read-only view
  * of every document tied to a claim - both its overall attachment and every
@@ -15,7 +17,7 @@ import { Paperclip, X, Upload, Eye, FileText, Loader2, Trash2, AlertTriangle } f
  */
 export default function Attachments({
   documentType, expenseId, invoiceId, paymentId, claimId, claimLineId, claimFullId,
-  quotationId, receivableInvoiceId,
+  quotationId, receivableInvoiceId, fundTransferId,
   label = "Attachments", compact = false, iconOnly = false, icon: Icon = Paperclip, readOnly = false, canDelete = true,
 }) {
   const [open, setOpen] = useState(false);
@@ -32,6 +34,7 @@ export default function Attachments({
   const entityParams = {
     expense_id: expenseId, invoice_id: invoiceId, payment_id: paymentId, claim_id: claimId, claim_line_id: claimLineId,
     quotation_id: quotationId, receivable_invoice_id: receivableInvoiceId,
+    fund_transfer_id: fundTransferId,
   };
 
   function load() {

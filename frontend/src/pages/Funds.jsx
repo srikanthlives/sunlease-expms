@@ -3,6 +3,7 @@ import client, { apiErrorMessage } from "../api/client";
 import { Card, Table, StatCard, Button, Input, Textarea, Select, TruncatedText, formatMoney, formatDate } from "../components/ui";
 import { Plus, X, Pencil, Ban, ShieldCheck, ShieldOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import Attachments from "../components/Attachments";
 
 const TABS = [
   { key: "sheet", label: "Balance Sheet" },
@@ -241,6 +242,14 @@ function Transfers({ accounts, entities }) {
         <ShieldCheck size={14} />{r.verified_by_name || "Yes"}
       </span>
     ) : <span className="text-ink/40 text-xs">—</span> },
+    { key: "_docs", label: "Files", render: (r) => (
+      // Bank advice / cheque scan / signed acknowledgement for this entry.
+      // Nothing new gets attached to a cancelled row, and once the transfer
+      // is verified only a Super Admin can remove a file (matching the
+      // server-side rule).
+      <Attachments documentType="FUND_TRANSFER" fundTransferId={r.id} compact label="Files"
+        readOnly={r.is_cancelled} canDelete={isSuperAdmin || !r.is_verified} />
+    ) },
     { key: "_a", label: "", render: (r) => !r.is_cancelled && (
       <div className="flex items-center gap-2 justify-end">
         {isSuperAdmin && (r.is_verified ? (

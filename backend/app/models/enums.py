@@ -65,6 +65,7 @@ class DocumentType:
     PAYMENT = "PAYMENT"
     QUOTATION = "QUOTATION"
     RECEIVABLE_INVOICE = "RECEIVABLE_INVOICE"
+    FUND_TRANSFER = "FUND_TRANSFER"
 
 
 class ApprovalEntityType:

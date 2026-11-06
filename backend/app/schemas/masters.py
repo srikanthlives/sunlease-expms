@@ -1,12 +1,13 @@
 import re
 
 from pydantic import BaseModel, field_validator
+from app.schemas.common import LongText, OptLongText
 
 
 class ProjectBase(BaseModel):
     code: str
     name: str
-    description: str | None = None
+    description: OptLongText = None
     is_active: bool = True
 
 

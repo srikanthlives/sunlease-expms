@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.deps import get_current_user
 from app.db.session import get_db
-from app.models.models import Document, User, Project, Expense, Invoice, Payment, EmployeeClaim, EmployeeClaimLine, Quotation, ReceivableInvoice
+from app.models.models import Document, User, Project, Expense, Invoice, Payment, EmployeeClaim, EmployeeClaimLine, Quotation, ReceivableInvoice, FundTransfer
 from app.models.enums import DocumentType, ClaimStatus, RoleName, EditableEntityType
 from app.schemas.transactions import DocumentOut
 from app.services import edit_request_service
@@ -30,6 +30,7 @@ def _category_folder(document_type: str) -> str:
         DocumentType.CLAIM_LINE: settings.DOCUMENT_FOLDER_CLAIM,
         DocumentType.QUOTATION: "receivables",
         DocumentType.RECEIVABLE_INVOICE: "receivables",
+        DocumentType.FUND_TRANSFER: settings.DOCUMENT_FOLDER_FUND_TRANSFER,
     }.get(document_type, "misc")
 
 
@@ -58,6 +59,26 @@ def _authorize_claim_document_change(db: Session, user: User, claim_id: int | No
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Attachments can only be changed while the claim is a draft or rejected")
 
 
+def _authorize_fund_transfer_document(db: Session, user: User, fund_transfer_id: int | None,
+                                      deleting: bool = False) -> FundTransfer | None:
+    """Fund-transfer attachments inherit the Funds module's access boundary
+    (Admin/Super Admin only - see routers/funds.py), rather than the
+    all-authenticated-users default the other document types use. Deleting
+    one off a VERIFIED transfer is Super Admin only, mirroring the
+    edit/cancel lock on the transfer itself."""
+    if not fund_transfer_id:
+        return None
+    if user.role.name not in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have access to fund transfer attachments")
+    t = db.query(FundTransfer).filter(FundTransfer.id == fund_transfer_id).first()
+    if not t:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Fund transfer not found")
+    if deleting and t.is_verified and user.role.name != RoleName.SUPER_ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "This transfer is verified - only a Super Admin can remove its attachments")
+    return t
+
+
 @router.post("", response_model=DocumentOut)
 async def upload_document(
     document_type: str = Form(...),
@@ -68,18 +89,21 @@ async def upload_document(
     payment_id: int | None = Form(None),
     quotation_id: int | None = Form(None),
     receivable_invoice_id: int | None = Form(None),
+    fund_transfer_id: int | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     if document_type not in (
         DocumentType.EXPENSE, DocumentType.INVOICE, DocumentType.CLAIM, DocumentType.CLAIM_LINE, DocumentType.PAYMENT,
-        DocumentType.QUOTATION, DocumentType.RECEIVABLE_INVOICE,
+        DocumentType.QUOTATION, DocumentType.RECEIVABLE_INVOICE, DocumentType.FUND_TRANSFER,
     ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid document_type")
-    if not any([expense_id, claim_id, claim_line_id, invoice_id, payment_id, quotation_id, receivable_invoice_id]):
+    if not any([expense_id, claim_id, claim_line_id, invoice_id, payment_id, quotation_id,
+                receivable_invoice_id, fund_transfer_id]):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Document must be linked to at least one entity")
     _authorize_claim_document_change(db, user, claim_id, claim_line_id)
+    transfer = _authorize_fund_transfer_document(db, user, fund_transfer_id)
 
     # Get project code for folder organization
     project_code = "default"
@@ -113,6 +137,8 @@ async def upload_document(
         receivable_invoice = db.query(ReceivableInvoice).filter(ReceivableInvoice.id == receivable_invoice_id).first()
         if receivable_invoice:
             project_id = receivable_invoice.project_id
+    # A fund transfer has no project - it is company-level money movement,
+    # so its files live under the "default" project code.
 
     # Get project code if project exists
     if project_id:
@@ -126,10 +152,16 @@ async def upload_document(
     # folder, keyed by claim number, so everything for one claim is in one
     # place regardless of when each file was added or resubmitted.
     subdir_override = f"{project_code}/{category}/{claim.claim_number}" if claim else None
+    # Same grouping idea for fund transfers: everything supporting one
+    # transfer (bank advice, cheque scan, signed acknowledgement) lands in a
+    # folder named after the transfer, not the upload date.
+    if transfer:
+        subdir_override = f"{project_code}/{category}/{transfer.transfer_number}"
     meta = await save_upload(db, file, uploaded_by=user.id, project_code=project_code, category=category, subdir_override=subdir_override)
     doc = Document(
         expense_id=expense_id, claim_id=claim_id, claim_line_id=claim_line_id, invoice_id=invoice_id,
         payment_id=payment_id, quotation_id=quotation_id, receivable_invoice_id=receivable_invoice_id,
+        fund_transfer_id=fund_transfer_id,
         document_type=document_type, uploaded_by=user.id, **meta,
     )
     db.add(doc)
@@ -140,11 +172,13 @@ async def upload_document(
 
 @router.get("/by-entity", response_model=list[DocumentOut])
 def list_by_entity(
-    db: Session = Depends(get_db), _=Depends(get_current_user),
+    db: Session = Depends(get_db), _: User = Depends(get_current_user),
     expense_id: int | None = None, claim_id: int | None = None, claim_line_id: int | None = None,
     invoice_id: int | None = None, payment_id: int | None = None,
     quotation_id: int | None = None, receivable_invoice_id: int | None = None,
+    fund_transfer_id: int | None = None,
 ):
+    _authorize_fund_transfer_document(db, _, fund_transfer_id)
     q = db.query(Document)
     if expense_id:
         q = q.filter(Document.expense_id == expense_id)
@@ -160,6 +194,8 @@ def list_by_entity(
         q = q.filter(Document.quotation_id == quotation_id)
     if receivable_invoice_id:
         q = q.filter(Document.receivable_invoice_id == receivable_invoice_id)
+    if fund_transfer_id:
+        q = q.filter(Document.fund_transfer_id == fund_transfer_id)
     return q.order_by(Document.id.desc()).all()
 
 
@@ -194,6 +230,10 @@ def delete_document(document_id: int, db: Session = Depends(get_db), user: User 
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
     if doc.claim_id or doc.claim_line_id:
         _authorize_claim_document_change(db, user, doc.claim_id, doc.claim_line_id)
+    elif doc.fund_transfer_id:
+        # Checked before the blanket Admin allowance below, because a
+        # verified transfer narrows this to Super Admin only.
+        _authorize_fund_transfer_document(db, user, doc.fund_transfer_id, deleting=True)
     elif user.role.name in (RoleName.SUPER_ADMIN, RoleName.ADMIN):
         pass
     elif doc.quotation_id or doc.receivable_invoice_id:
@@ -225,7 +265,12 @@ async def download_document(document_id: int, db: Session = Depends(get_db), use
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
-    
+    # Fund-transfer attachments are the exception to the all-authenticated
+    # rule above - they belong to the Admin-only Funds module, so downloads
+    # are scoped to Admin/Super Admin too.
+    if doc.fund_transfer_id:
+        _authorize_fund_transfer_document(db, user, doc.fund_transfer_id)
+
     storage = get_storage()
     
     if settings.STORAGE_TYPE == "local":

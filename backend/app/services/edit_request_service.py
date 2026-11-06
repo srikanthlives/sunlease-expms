@@ -12,6 +12,7 @@ from app.models.models import (
 from app.models.enums import EditableEntityType, EditRequestStatus, AuditAction
 from app.services import audit_service
 from app.services.payment_status_service import get_paid_amount, recalculate_payment_status
+from app.schemas.common import TEXT_FIELD_MAX_LENGTH
 
 # Whitelisted editable fields per entity, with a type tag used for coercion.
 # Structural fields (id, status, source_type/source_id, payment_status,
@@ -65,6 +66,10 @@ def _json_safe(value):
     return value
 
 
+#: Free-text fields that the shared character cap applies to.
+_TEXT_FIELDS = ("description", "remarks", "notes", "reason", "po_number")
+
+
 def validate_fields(entity_type: str, changes: dict):
     if entity_type not in FIELD_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown entity_type '{entity_type}'")
@@ -74,6 +79,14 @@ def validate_fields(entity_type: str, changes: dict):
     unknown = set(changes.keys()) - set(allowed.keys())
     if unknown:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"These fields are not editable for {entity_type}: {', '.join(sorted(unknown))}")
+    # Edit requests carry a raw dict, so they bypass the Pydantic field
+    # types that cap free text everywhere else - apply the same cap here or
+    # this path becomes a way around it.
+    for field in _TEXT_FIELDS:
+        value = changes.get(field)
+        if isinstance(value, str) and len(value) > TEXT_FIELD_MAX_LENGTH:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                f"{field} must be at most {TEXT_FIELD_MAX_LENGTH} characters")
 
 
 def get_entity(db: Session, entity_type: str, entity_id: int):

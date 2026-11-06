@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_admin, require_super_admin
 from app.db.session import get_db
 from app.models.models import Account, FundingEntity, FundTransfer, Payment, ReceivablePayment, User
+from app.schemas.common import LongText, OptLongText
 from app.services import audit_service
 
 # Entire module is Admin / Super Admin only (fund tracking is a
@@ -20,7 +21,7 @@ D = Decimal
 
 class EntityIn(BaseModel):
     name: str
-    notes: str | None = None
+    notes: OptLongText = None
     is_active: bool = True
 
 
@@ -48,13 +49,13 @@ class TransferIn(BaseModel):
     funding_type: str | None = None  # LOAN / CAPITAL / ADVANCE / OTHER
     amount: Decimal
     # Mandatory when editing a VERIFIED transfer; ignored otherwise.
-    edit_reason: str | None = None
+    edit_reason: OptLongText = None
     reference_number: str | None = None
-    remarks: str | None = None
+    remarks: OptLongText = None
 
 
 class CancelIn(BaseModel):
-    reason: str
+    reason: LongText
 
 
 def _entity_out(e: FundingEntity):

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import client, { apiErrorMessage } from "../api/client";
-import { Card, Table, Button, Input, Select, vendorLabel } from "../components/ui";
+import { Card, Table, Button, Input, Textarea, Select, vendorLabel, TruncatedText } from "../components/ui";
 import { Plus, X, Pencil, Download, Upload, Trash2 } from "lucide-react";
 
 function emptyForm(fields) {
@@ -559,7 +559,7 @@ export function ProjectsMaster() {
               <Input label="Project Code" required value={form.code} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} />
               <Input label="Project Name" required value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
             </div>
-            <Input label="Description" value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
+            <Textarea label="Description" value={form.description} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
             {error && <div className="text-sm text-danger bg-danger/10 rounded-md px-3 py-2">{error}</div>}
             <Button type="submit" disabled={busy}>{busy ? "Saving…" : editingId != null ? "Save Changes" : "Save"}</Button>
           </form>
@@ -601,7 +601,7 @@ export function ProjectsMaster() {
           columns={[
             { key: "code", header: "Code" },
             { key: "name", header: "Name" },
-            { key: "description", header: "Description" },
+            { key: "description", header: "Description", render: (r) => <TruncatedText text={r.description} width={280} /> },
             {
               key: "approver", header: "Claim Approver (Accounts)",
               render: (r) =>
